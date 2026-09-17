@@ -4,7 +4,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>InFalsusRating</AssemblyName>
     <RootNamespace>InFalsusRating</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.3.0</Version>
     <LangVersion>latest</LangVersion>
     <!-- 关掉 nullable，IL2CPP interop 里大量字段是可空引用，开着会很烦 -->
     <Nullable>disable</Nullable>

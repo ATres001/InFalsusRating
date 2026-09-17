@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using BepInEx;
@@ -15,7 +16,7 @@ using ifapp.Game.Data;
 
 namespace InFalsusRating;
 
-[BepInPlugin("com.atres.infalsusrating", "In Falsus Rating", "0.2.0")]
+[BepInPlugin("com.atres.infalsusrating", "In Falsus Rating", "0.3.0")]
 public class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
@@ -23,11 +24,9 @@ public class Plugin : BasePlugin
     public static int TotalExacts = 0;
     public static string PlayerName = "Player";
     public static List<ChartRating> ChartRatings = new List<ChartRating>();
-    public static volatile bool IsPlaying = false;
     public static volatile bool FirstRatingReady = false;
     public static volatile bool OverlayManuallyHidden = false;
 
-    // ⭐ Rating 变化量显示
     public static volatile bool HasRatingDelta = false;
     public static double RatingDeltaValue = 0;
     public static DateTime RatingDeltaShownAt = DateTime.MinValue;
@@ -50,6 +49,7 @@ public class Plugin : BasePlugin
     {
         Logger = base.Log;
         Logger.LogInfo("In Falsus Rating Mod 加载中...");
+        EnsureResourceFiles();
         ConstTable.Load();
         LoadPlayerName();
         StartScenePatchLoop();
@@ -62,7 +62,59 @@ public class Plugin : BasePlugin
         Logger.LogInfo("[Plugin] Harmony patch 已挂载");
     }
 
-    // ---------- 读取本地名字 ----------
+    // ---------- 资源文件自动搬运 ----------
+    static void EnsureResourceFiles()
+    {
+        try
+        {
+            string configDir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            Directory.CreateDirectory(configDir);
+
+            string[] sourceDirs = new[]
+            {
+                Paths.PluginPath,
+                Path.Combine(Paths.PluginPath, "InFalsusRating"),
+                AppDomain.CurrentDomain.BaseDirectory,
+                Paths.GameRootPath,
+            };
+
+            EnsureFile("font2.ttf", configDir, sourceDirs);
+            EnsureFile("bg.png",    configDir, sourceDirs);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning($"[Res] 确保资源: {ex.Message}");
+        }
+    }
+
+    static void EnsureFile(string fileName, string destDir, string[] sourceDirs)
+    {
+        string destPath = Path.Combine(destDir, fileName);
+        if (File.Exists(destPath))
+        {
+            Logger.LogInfo($"[Res] {fileName} 已存在");
+            return;
+        }
+
+        foreach (var dir in sourceDirs)
+        {
+            try
+            {
+                string src = Path.Combine(dir, fileName);
+                if (File.Exists(src))
+                {
+                    File.Copy(src, destPath);
+                    Logger.LogInfo($"[Res] 已复制 {fileName}: {src} → {destPath}");
+                    return;
+                }
+            }
+            catch { }
+        }
+
+        Logger.LogInfo($"[Res] 未找到 {fileName}，请手动放到: {destPath}");
+    }
+
+    // ---------- 读取玩家名字 ----------
     static void LoadPlayerName()
     {
         try
@@ -88,7 +140,6 @@ public class Plugin : BasePlugin
             {
                 File.WriteAllText(file, "Player");
                 Logger.LogInfo($"[Name] 已创建配置文件: {file}");
-                Logger.LogInfo($"[Name] 请编辑该文件改成你的名字，然后重启游戏");
             }
         }
         catch (Exception ex)
@@ -99,7 +150,7 @@ public class Plugin : BasePlugin
         Logger.LogInfo($"[Name] 当前使用: {PlayerName}");
     }
 
-    // ---------- 后台持续尝试 patch 场景 ----------
+    // ---------- 后台 patch 场景 ----------
     static void StartScenePatchLoop()
     {
         var t = new Thread(() =>
@@ -123,7 +174,7 @@ public class Plugin : BasePlugin
         t.Start();
     }
 
-        // ---------- 全局快捷键：F8 切换 overlay 显示 ----------
+    // ---------- F8 全局快捷键 ----------
     [DllImport("user32.dll")]
     static extern short GetAsyncKeyState(int vKey);
 
@@ -194,57 +245,14 @@ public class Plugin : BasePlugin
     }
 }
 
-// ========== GameScene 探测 ==========
-public static class GameScenePatcher
-{
-    private static bool _tried = false;
-
-    public static void EnsurePatched()
-    {
-        if (_tried) return;
-        _tried = true;
-
-        try
-        {
-            Type t = null;
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                t = asm.GetType("ifapp.Game.Scenes.GameScene");
-                if (t != null) break;
-            }
-            if (t == null) { Plugin.Logger.LogWarning("[Probe] GameScene 类型找不到"); return; }
-
-            var harmony = new Harmony("com.atres.infalsusrating.gamescene");
-            var enter = typeof(GameSceneHooks).GetMethod("OnEnter", BindingFlags.Static | BindingFlags.Public);
-            var exit  = typeof(GameSceneHooks).GetMethod("OnExit",  BindingFlags.Static | BindingFlags.Public);
-
-            var onEnable  = t.GetMethod("OnEnable",  BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var onDisable = t.GetMethod("OnDisable", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var awake     = t.GetMethod("Awake",     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var onDestroy = t.GetMethod("OnDestroy", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-            if (onEnable  != null) { harmony.Patch(onEnable,  postfix: new HarmonyMethod(enter)); Plugin.Logger.LogInfo("[Probe] GameScene.OnEnable 已 patch"); }
-            if (awake     != null) { harmony.Patch(awake,     postfix: new HarmonyMethod(enter)); Plugin.Logger.LogInfo("[Probe] GameScene.Awake 已 patch"); }
-            if (onDisable != null) { harmony.Patch(onDisable, postfix: new HarmonyMethod(exit));  Plugin.Logger.LogInfo("[Probe] GameScene.OnDisable 已 patch"); }
-            if (onDestroy != null) { harmony.Patch(onDestroy, postfix: new HarmonyMethod(exit));  Plugin.Logger.LogInfo("[Probe] GameScene.OnDestroy 已 patch"); }
-        }
-        catch (Exception ex)
-        {
-            Plugin.Logger.LogError($"[Probe] 补 patch 失败: {ex}");
-        }
-    }
-}
-
-public static class GameSceneHooks
-{
-    public static void OnEnter() { Plugin.IsPlaying = true;  Plugin.Logger.LogInfo("[Probe] PLAYING (GameScene 激活)"); }
-    public static void OnExit()  { Plugin.IsPlaying = false; Plugin.Logger.LogInfo("[Probe] MENU (GameScene 关闭)"); }
-}
-
 // ========== 场景活跃追踪 ==========
 public static class SceneTracker
 {
     public static volatile bool IsInResultsScreen = false;
+
+    private const string SCENE_GAME       = "ifapp.Game.Scenes.GameScene";
+    private const string SCENE_SONGSELECT = "ifapp.Game.Scenes.SongSelectScene";
+    private const string SCENE_RESULTS    = "ifapp.Game.Scenes.ResultsScene";
 
     private static readonly string[] _candidateScenes = new[]
     {
@@ -260,44 +268,44 @@ public static class SceneTracker
         "ifapp.Game.Scenes.CharacterSelectLayer",
     };
 
-    private static readonly HashSet<string> _allowedForOverlay = new HashSet<string>
-    {
-        "ifapp.Game.Scenes.HubScene",
-        "ifapp.Game.Scenes.SongSelectScene",
-        "ifapp.Game.Scenes.ResultsScene",
-    };
-
-    private static readonly HashSet<string> _blockingScenes = new HashSet<string>
-    {
-        "ifapp.Game.Scenes.TitleScene",
-        "ifapp.Game.Scenes.GameScene",
-        "ifapp.Game.Scenes.StoryScene",
-        "ifapp.Game.Scenes.TimelineScene",
-        "ifapp.Game.Scenes.CreditsScene",
-        "ifapp.Game.Scenes.PackSelectScene",
-    };
-
     private static List<string> _sceneStack = new List<string>();
     private static readonly object _lock = new object();
     private static bool _patched = false;
     private static readonly HashSet<string> _handled = new HashSet<string>();
 
+    // 显示状态变化日志
+    private static bool _lastShouldShow = false;
+    private static bool _shouldShowInit = false;
+
     public static bool ShouldShowOverlay()
     {
-        if (IsInResultsScreen) return true;
+        bool result;
 
-        lock (_lock)
+        if (IsInResultsScreen)
         {
-            if (_sceneStack.Count == 0) return true;
-
-            for (int i = _sceneStack.Count - 1; i >= 0; i--)
-            {
-                string s = _sceneStack[i];
-                if (_allowedForOverlay.Contains(s)) return true;
-                if (_blockingScenes.Contains(s)) return false;
-            }
-            return true;
+            result = true;
         }
+        else
+        {
+            lock (_lock)
+            {
+                if (_sceneStack.Contains(SCENE_GAME))
+                    result = false;
+                else if (_sceneStack.Contains(SCENE_SONGSELECT) || _sceneStack.Contains(SCENE_RESULTS))
+                    result = true;
+                else
+                    result = false;
+            }
+        }
+
+        if (!_shouldShowInit || result != _lastShouldShow)
+        {
+            _shouldShowInit = true;
+            _lastShouldShow = result;
+            Plugin.Logger.LogInfo($"[Scene] ShouldShowOverlay → {result} (stack={GetStackSnapshot()})");
+        }
+
+        return result;
     }
 
     public static bool TryEnsurePatched()
@@ -338,7 +346,7 @@ public static class SceneTracker
                     else if (onDestroy != null) { harmony.Patch(onDestroy, postfix: new HarmonyMethod(exit)); didExit = true; }
 
                     if (didEnter && didExit)
-                        Plugin.Logger.LogInfo($"[Scene] ✅ patch {t.Name}");
+                        Plugin.Logger.LogInfo($"[Scene] patch {t.Name}");
 
                     _handled.Add(className);
                 }
@@ -371,7 +379,7 @@ public static class SceneTracker
             if (!_sceneStack.Contains(sceneName))
                 _sceneStack.Add(sceneName);
 
-            Plugin.Logger.LogInfo($"[Scene] ▶ {sceneName}  stack=[{string.Join(" > ", _sceneStack)}]");
+            Plugin.Logger.LogInfo($"[Scene] ▶ {sceneName}");
         }
     }
 
@@ -380,25 +388,35 @@ public static class SceneTracker
         lock (_lock)
         {
             _sceneStack.Remove(sceneName);
-            Plugin.Logger.LogInfo($"[Scene] ◀ {sceneName}  stack=[{string.Join(" > ", _sceneStack)}]");
+            Plugin.Logger.LogInfo($"[Scene] ◀ {sceneName}");
+        }
+    }
+
+    public static string GetStackSnapshot()
+    {
+        lock (_lock)
+        {
+            return string.Join(" > ", _sceneStack);
         }
     }
 }
 
-// ========== Scene 生命周期钩子 ==========
+// ========== 场景生命周期 hook ==========
 public static class SceneHooks
 {
     public static void OnSceneEnable(object __instance)
     {
         if (__instance == null) return;
-        string name = __instance.GetType().FullName;
+        string name = "?";
+        try { name = __instance.GetType().FullName; } catch { }
         SceneTracker.Increment(name);
     }
 
     public static void OnSceneDisable(object __instance)
     {
         if (__instance == null) return;
-        string name = __instance.GetType().FullName;
+        string name = "?";
+        try { name = __instance.GetType().FullName; } catch { }
         SceneTracker.Decrement(name);
     }
 }
@@ -448,7 +466,7 @@ public static class ResultsDetector
     }
 }
 
-// ========== Overlay ==========
+// ========== Win32 Overlay ==========
 public static class Win32Overlay
 {
     const uint WS_EX_LAYERED     = 0x00080000;
@@ -474,7 +492,6 @@ public static class Win32Overlay
     const int LinearGradientModeVertical = 1;
     const int WrapModeTile = 0;
 
-    // ============ 可调项 ============
     const float NAME_FONT_RATIO  = 0.7f;
     const float MAIN_FONT_RATIO  = 0.72f;
     const float EXACT_FONT_RATIO = 0.46f;
@@ -502,7 +519,6 @@ public static class Win32Overlay
 
     static readonly int COLOR_POSITIVE = unchecked((int)0xFF7FFF7F);
     static readonly int COLOR_NEGATIVE = unchecked((int)0xFFFF7F7F);
-
     static readonly int GRADIENT_TOP    = unchecked((int)0xFF80AEFF);
     static readonly int GRADIENT_BOTTOM = unchecked((int)0xFFE0C9FF);
 
@@ -613,6 +629,7 @@ public static class Win32Overlay
     delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     static WndProcDelegate _wndProc;
 
+    // GDI+
     [DllImport("gdiplus.dll")]
     static extern int GdiplusStartup(out IntPtr token, ref GdiplusStartupInput input, IntPtr output);
     [DllImport("gdiplus.dll")]
@@ -660,6 +677,21 @@ public static class Win32Overlay
     static extern int GdipDrawString(IntPtr graphics, string text, int length,
         IntPtr font, ref GPRECTF layoutRect, IntPtr stringFormat, IntPtr brush);
 
+    [DllImport("gdiplus.dll")]
+    static extern int GdipNewPrivateFontCollection(out IntPtr fontCollection);
+    [DllImport("gdiplus.dll")]
+    static extern int GdipDeletePrivateFontCollection(ref IntPtr fontCollection);
+    [DllImport("gdiplus.dll", CharSet = CharSet.Unicode)]
+    static extern int GdipPrivateAddFontFile(IntPtr fontCollection, string filename);
+    [DllImport("gdiplus.dll")]
+    static extern int GdipGetFontCollectionFamilyCount(IntPtr fontCollection, out int numFound);
+    [DllImport("gdiplus.dll")]
+    static extern int GdipGetFontCollectionFamilyList(IntPtr fontCollection, int numSought,
+        [Out] IntPtr[] gpfamilies, out int numFound);
+    [DllImport("gdiplus.dll", CharSet = CharSet.Unicode)]
+    static extern int GdipGetFamilyName(IntPtr fontFamily, StringBuilder name, int language);
+
+    // Win32
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern ushort RegisterClassW(ref WNDCLASS lpWndClass);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -697,7 +729,18 @@ public static class Win32Overlay
     static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")]
     static extern bool GetCursorPos(out POINT lpPoint);
+    [DllImport("user32.dll")]
+    static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll")]
+    static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    // GDI
     [DllImport("gdi32.dll")]
     static extern IntPtr CreateCompatibleDC(IntPtr hdc);
     [DllImport("gdi32.dll")]
@@ -709,9 +752,6 @@ public static class Win32Overlay
     static extern bool DeleteDC(IntPtr hdc);
     [DllImport("gdi32.dll")]
     static extern bool DeleteObject(IntPtr hObject);
-    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
-    static extern int AddFontResourceExW(string lpszFilename, uint fl, IntPtr pdv);
-    const uint FR_PRIVATE = 0x10;
 
     static IntPtr _gdiplusToken = IntPtr.Zero;
     static IntPtr _bgBitmap = IntPtr.Zero;
@@ -723,6 +763,7 @@ public static class Win32Overlay
     static IntPtr _dibBits = IntPtr.Zero;
     static IntPtr _dibOldObj = IntPtr.Zero;
 
+    static IntPtr _privateFontCollection = IntPtr.Zero;
     static IntPtr _fontFamily = IntPtr.Zero;
     static IntPtr _fontName  = IntPtr.Zero;
     static IntPtr _fontMain  = IntPtr.Zero;
@@ -756,9 +797,9 @@ public static class Win32Overlay
     static bool _pendingShow = false;
     static DateTime _pendingShowAt = DateTime.MinValue;
 
-    static readonly string BG_PATH = System.IO.Path.Combine(
+    static readonly string BG_PATH = Path.Combine(
         BepInEx.Paths.ConfigPath, "InFalsusRating", "bg.png");
-    static readonly string FONT_PATH = System.IO.Path.Combine(
+    static readonly string FONT_PATH = Path.Combine(
         BepInEx.Paths.ConfigPath, "InFalsusRating", "font2.ttf");
 
     public static void Start(Func<string> mainProvider)
@@ -775,6 +816,14 @@ public static class Win32Overlay
         thread.Start();
     }
 
+    static void StartupGdiplus()
+    {
+        var input = new GdiplusStartupInput { GdiplusVersion = 1 };
+        int status = GdiplusStartup(out _gdiplusToken, ref input, IntPtr.Zero);
+        if (status != 0)
+            Plugin.Logger.LogError($"[Overlay] GdiplusStartup 失败: {status}");
+    }
+
     static void LoadBackgroundImage()
     {
         if (!File.Exists(BG_PATH))
@@ -782,9 +831,6 @@ public static class Win32Overlay
             Plugin.Logger.LogWarning($"[Overlay] 背景图不存在: {BG_PATH}");
             return;
         }
-
-        var input = new GdiplusStartupInput { GdiplusVersion = 1 };
-        GdiplusStartup(out _gdiplusToken, ref input, IntPtr.Zero);
 
         int status = GdipCreateBitmapFromFile(BG_PATH, out _bgBitmap);
         if (status != 0 || _bgBitmap == IntPtr.Zero)
@@ -810,32 +856,105 @@ public static class Win32Overlay
                 Plugin.Logger.LogInfo($"[Overlay] 自定义字体不存在: {FONT_PATH}（用 Segoe UI）");
                 return;
             }
-            int n = AddFontResourceExW(FONT_PATH, FR_PRIVATE, IntPtr.Zero);
-            if (n > 0)
+
+            if (GdipNewPrivateFontCollection(out _privateFontCollection) != 0)
             {
-                _loadedFontName = "Furore";
-                Plugin.Logger.LogInfo($"[Overlay] 自定义字体已加载: {_loadedFontName}");
+                Plugin.Logger.LogWarning("[Overlay] GdipNewPrivateFontCollection 失败");
+                _privateFontCollection = IntPtr.Zero;
+                return;
             }
-            else
+
+            int addStatus = GdipPrivateAddFontFile(_privateFontCollection, FONT_PATH);
+            if (addStatus != 0)
             {
-                Plugin.Logger.LogWarning("[Overlay] AddFontResourceEx 返回 0");
+                Plugin.Logger.LogWarning($"[Overlay] GdipPrivateAddFontFile 失败: {addStatus}");
+                GdipDeletePrivateFontCollection(ref _privateFontCollection);
+                _privateFontCollection = IntPtr.Zero;
+                return;
             }
+
+            GdipGetFontCollectionFamilyCount(_privateFontCollection, out int familyCount);
+            if (familyCount <= 0)
+            {
+                Plugin.Logger.LogWarning("[Overlay] 字体文件里没找到家族");
+                return;
+            }
+
+            var families = new IntPtr[familyCount];
+            GdipGetFontCollectionFamilyList(_privateFontCollection, familyCount, families, out int found);
+            if (found <= 0)
+            {
+                Plugin.Logger.LogWarning("[Overlay] 获取字体家族列表失败");
+                return;
+            }
+
+            _fontFamily = families[0];
+
+            var sb = new StringBuilder(64);
+            if (GdipGetFamilyName(_fontFamily, sb, 0) == 0)
+                _loadedFontName = sb.ToString();
+
+            Plugin.Logger.LogInfo($"[Overlay] 自定义字体已加载: \"{_loadedFontName}\" (家族数 {familyCount})");
         }
         catch (Exception ex)
         {
-            Plugin.Logger.LogError($"[Overlay] LoadCustomFont: {ex.Message}");
+            Plugin.Logger.LogError($"[Overlay] LoadCustomFont: {ex}");
         }
     }
 
     static IntPtr FindGameWindow()
     {
+        // 1. 优先：按标题精确匹配游戏窗口（BepInEx Console 标题不是 "In Falsus"）
+        var hwnd = FindWindowW(null, "In Falsus");
+        if (hwnd != IntPtr.Zero && IsWindow(hwnd))
+            return hwnd;
+
+        // 2. 遍历本进程所有顶层可见窗口，取面积最大的（= 游戏窗口）
+        try
+        {
+            uint pid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+            IntPtr best = IntPtr.Zero;
+            long bestArea = 0;
+
+            EnumWindows((h, l) =>
+            {
+                try
+                {
+                    GetWindowThreadProcessId(h, out uint wpid);
+                    if (wpid != pid) return true;
+                    if (!IsWindowVisible(h)) return true;
+
+                    if (!GetWindowRect(h, out var rc)) return true;
+                    long w = rc.right - rc.left;
+                    long hh = rc.bottom - rc.top;
+                    if (w <= 0 || hh <= 0) return true;
+
+                    long area = w * hh;
+                    if (area > bestArea)
+                    {
+                        bestArea = area;
+                        best = h;
+                    }
+                }
+                catch { }
+                return true;
+            }, IntPtr.Zero);
+
+            if (best != IntPtr.Zero)
+                return best;
+        }
+        catch { }
+
+        // 3. 兜底：Process.MainWindowHandle
         try
         {
             var p = System.Diagnostics.Process.GetCurrentProcess();
-            if (p.MainWindowHandle != IntPtr.Zero) return p.MainWindowHandle;
+            if (p.MainWindowHandle != IntPtr.Zero)
+                return p.MainWindowHandle;
         }
         catch { }
-        return FindWindowW(null, "In Falsus");
+
+        return IntPtr.Zero;
     }
 
     static IntPtr CreateVerticalGradient(ref GPRECTF rect)
@@ -850,12 +969,12 @@ public static class Win32Overlay
 
     static void SetupGdiplusResources()
     {
-        string familyName = _loadedFontName ?? "Segoe UI";
-        int status = GdipCreateFontFamilyFromName(familyName, IntPtr.Zero, out _fontFamily);
-        if (status != 0 || _fontFamily == IntPtr.Zero)
+        if (_fontFamily == IntPtr.Zero)
         {
-            Plugin.Logger.LogWarning($"[Overlay] 字体 '{familyName}' 找不到，用 Segoe UI");
-            GdipCreateFontFamilyFromName("Segoe UI", IntPtr.Zero, out _fontFamily);
+            Plugin.Logger.LogInfo("[Overlay] 用默认字体 Segoe UI");
+            int status = GdipCreateFontFamilyFromName("Segoe UI", IntPtr.Zero, out _fontFamily);
+            if (status != 0 || _fontFamily == IntPtr.Zero)
+                GdipCreateFontFamilyFromName("Arial", IntPtr.Zero, out _fontFamily);
         }
 
         float nameSize  = _bgH * NAME_FONT_RATIO;
@@ -880,7 +999,7 @@ public static class Win32Overlay
         GdipSetStringFormatAlign(_formatCenter, StringAlignmentCenter);
         GdipSetStringFormatLineAlign(_formatCenter, StringAlignmentLineCenter);
 
-        Plugin.Logger.LogInfo($"[Overlay] 字体大小: Name={nameSize:F1} Main={mainSize:F1} Exact={exactSize:F1} Delta={deltaSize:F1}");
+        Plugin.Logger.LogInfo($"[Overlay] 字号 Name={nameSize:F1} Main={mainSize:F1} Exact={exactSize:F1} Delta={deltaSize:F1}");
     }
 
     static void SetupDib()
@@ -1082,6 +1201,7 @@ public static class Win32Overlay
 
     static void RunOverlay(Func<string> mainProvider)
     {
+        StartupGdiplus();
         LoadBackgroundImage();
         LoadCustomFont();
         SetupGdiplusResources();
@@ -1118,7 +1238,6 @@ public static class Win32Overlay
 
         ShowWindow(hWnd, SW_SHOWNOACTIVATE);
 
-        // 首次：直接 snap 到当前值，不做过渡
         _displayRating = Plugin.PlayerRating;
         _displayExact  = Plugin.TotalExacts;
 
@@ -1150,20 +1269,17 @@ public static class Win32Overlay
                     ComputeTargetPosition();
                     UpdateMouseAlpha();
 
-                    // ⭐ 显示状态稳定化：显示需 300ms 确认，隐藏立即生效
                     bool rawShouldShow = SceneTracker.ShouldShowOverlay() && !Plugin.OverlayManuallyHidden;
 
                     if (rawShouldShow != _stableShow)
                     {
                         if (!rawShouldShow)
                         {
-                            // 隐藏：立即
                             _stableShow = false;
                             _pendingShow = false;
                         }
                         else
                         {
-                            // 显示：需确认 300ms
                             if (!_pendingShow)
                             {
                                 _pendingShow = true;
@@ -1173,7 +1289,6 @@ public static class Win32Overlay
                             {
                                 _stableShow = true;
                                 _pendingShow = false;
-                                Plugin.Logger.LogInfo("[Overlay] 显示确认");
                             }
                         }
                     }
@@ -1182,10 +1297,7 @@ public static class Win32Overlay
                         _pendingShow = false;
                     }
 
-                    bool shouldShow = _stableShow;
-                    int destY = shouldShow
-                        ? _targetY
-                        : _targetY - _bgH - 40;
+                    int destY = _stableShow ? _targetY : _targetY - _bgH - 40;
 
                     if (_screenY != destY)
                     {
@@ -1211,12 +1323,10 @@ public static class Win32Overlay
                     else
                         _displayExact += exactDiff * DIGIT_LERP;
 
-                    // ⭐ 更新所有要渲染的文本
                     _nameText  = Plugin.PlayerName;
                     _mainText  = _displayRating.ToString("F2");
                     _exactText = ((int)Math.Round(_displayExact)).ToString();
 
-                    // ⭐ Delta 显示（8 秒超时清除）
                     if (Plugin.HasRatingDelta)
                     {
                         if ((DateTime.Now - Plugin.RatingDeltaShownAt).TotalSeconds > 8)
@@ -1236,7 +1346,6 @@ public static class Win32Overlay
                         _deltaText = "";
                     }
 
-                    // ⭐ 只在有变化时重渲染
                     if (_nameText != _lastRenderedName ||
                         _mainText != _lastRenderedMain ||
                         _exactText != _lastRenderedExact ||
@@ -1271,6 +1380,7 @@ public static class Win32Overlay
         if (msg == WM_DESTROY)
         {
             if (_bgBitmap != IntPtr.Zero) GdipDisposeImage(_bgBitmap);
+            if (_privateFontCollection != IntPtr.Zero) GdipDeletePrivateFontCollection(ref _privateFontCollection);
             if (_gdiplusToken != IntPtr.Zero) GdiplusShutdown(_gdiplusToken);
             if (_dibOldObj != IntPtr.Zero) SelectObject(_memDC, _dibOldObj);
             if (_dibSection != IntPtr.Zero) DeleteObject(_dibSection);
@@ -1339,9 +1449,61 @@ public static class ConstTable
             Plugin.Logger.LogError($"[Const] 读取失败: {ex.Message}");
         }
     }
+
+    public static void SaveIfIncomplete(Dictionary<string, int> full)
+    {
+        if (full == null || full.Count == 0)
+        {
+            Plugin.Logger.LogWarning("[Const] 游戏数据为空，跳过生成");
+            return;
+        }
+
+        if (_table.Count >= 10)
+        {
+            Plugin.Logger.LogInfo($"[Const] 已有 {_table.Count} 条定数，跳过自动生成");
+            return;
+        }
+
+        try
+        {
+            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            Directory.CreateDirectory(dir);
+            string file = Path.Combine(dir, "const.json");
+
+            var ordered = full
+                .OrderBy(kv =>
+                {
+                    var parts = kv.Key.Split('|');
+                    return int.TryParse(parts[0], out var id) ? id : int.MaxValue;
+                })
+                .ThenBy(kv => kv.Key);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("{");
+            int i = 0;
+            int total = full.Count;
+            foreach (var kv in ordered)
+            {
+                sb.Append($"  \"{kv.Key}\": {kv.Value}");
+                i++;
+                if (i < total) sb.Append(",");
+                sb.AppendLine();
+            }
+            sb.AppendLine("}");
+
+            File.WriteAllText(file, sb.ToString());
+            _table = full;
+
+            Plugin.Logger.LogInfo($"[Const] 已生成 {full.Count} 条定数: {file}");
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogError($"[Const] 自动生成失败: {ex.Message}");
+        }
+    }
 }
 
-// ========== 曲名缓存 ==========
+// ========== 曲名 + 定数缓存 ==========
 public static class SongInfoCache
 {
     private static Dictionary<string, string> _songIdToName = new Dictionary<string, string>();
@@ -1376,6 +1538,8 @@ public static class SongInfoCache
             var itemProp = arrType.GetProperty("Item");
             int len = Convert.ToInt32(lenProp.GetValue(allSongsObj));
 
+            var constDict = new Dictionary<string, int>();
+
             for (int i = 0; i < len; i++)
             {
                 object songObj = null;
@@ -1384,8 +1548,9 @@ public static class SongInfoCache
                 if (songObj == null) continue;
 
                 var songType = songObj.GetType();
-                var idProp   = songType.GetProperty("Id",       BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                var nameProp = songType.GetProperty("BaseName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var idProp   = songType.GetProperty("Id",         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var nameProp = songType.GetProperty("BaseName",   BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var ciProp   = songType.GetProperty("ChartInfos", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
                 string songId = null, baseName = null;
                 try { songId = idProp?.GetValue(songObj)?.ToString(); } catch { }
@@ -1393,9 +1558,44 @@ public static class SongInfoCache
 
                 if (!string.IsNullOrEmpty(songId) && !_songIdToName.ContainsKey(songId))
                     _songIdToName[songId] = baseName ?? songId;
+
+                if (string.IsNullOrEmpty(songId) || ciProp == null) continue;
+                object ciArrObj = null;
+                try { ciArrObj = ciProp.GetValue(songObj); } catch { }
+                if (ciArrObj == null) continue;
+
+                var ciArrType = ciArrObj.GetType();
+                var ciLenProp = ciArrType.GetProperty("Length");
+                var ciItemProp = ciArrType.GetProperty("Item");
+                if (ciLenProp == null || ciItemProp == null) continue;
+
+                int ciLen = Convert.ToInt32(ciLenProp.GetValue(ciArrObj));
+                for (int j = 0; j < ciLen; j++)
+                {
+                    object ci = null;
+                    try { ci = ciItemProp.GetValue(ciArrObj, new object[] { j }); }
+                    catch { continue; }
+                    if (ci == null) continue;
+
+                    var ciType = ci.GetType();
+                    var diffProp   = ciType.GetProperty("Difficulty", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    var ratingProp = ciType.GetProperty("Rating",     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                    string diffStr = null;
+                    int rating = 0;
+                    try { diffStr = diffProp?.GetValue(ci)?.ToString(); } catch { }
+                    try { rating = Convert.ToInt32(ratingProp?.GetValue(ci) ?? 0); } catch { }
+
+                    if (string.IsNullOrEmpty(diffStr)) continue;
+
+                    string key = $"{songId}|{diffStr}";
+                    if (!constDict.ContainsKey(key))
+                        constDict[key] = rating;
+                }
             }
 
-            Plugin.Logger.LogInfo($"[Cache] 曲名缓存完成: {_songIdToName.Count} 首");
+            Plugin.Logger.LogInfo($"[Cache] 曲名 {_songIdToName.Count} 首，定数 {constDict.Count} 条");
+            ConstTable.SaveIfIncomplete(constDict);
         }
         catch (Exception ex)
         {
@@ -1409,7 +1609,7 @@ public static class SongInfoCache
     }
 }
 
-// ========== 评级计算核心 ==========
+// ========== 评级计算 ==========
 public static class RatingEngine
 {
     private static DateTime _lastCalcTime = DateTime.MinValue;
@@ -1422,6 +1622,24 @@ public static class RatingEngine
             + r.HoldCounts.Shiny
             + r.SkyAreaCounts.Shiny
             + r.FlickCounts.Shiny;
+    }
+    static int CountNotes(GameResultV4 r)
+    {
+        return CountAll(r.TapCounts)
+             + CountAll(r.HoldCounts)
+             + CountAll(r.SkyAreaCounts)
+             + CountAll(r.FlickCounts);
+    }
+
+    static int CountAll(JudgementTypeCount j)
+    {
+        return j.None
+             + j.Miss
+             + j.NearEarly
+             + j.NearLate
+             + j.PerfectEarly
+             + j.PerfectLate
+             + j.Shiny;
     }
 
     public static void Recalculate(object gameResults, string reason, bool throttle = true)
@@ -1448,26 +1666,44 @@ public static class RatingEngine
             var all = new List<GameResultV4>();
             for (int i = 0; i < validCount; i++) all.Add(arr[i]);
 
-            var passed = all.Where(r => r.CalculatedPaceValue >= 0).ToList();
-
-            var bestByScore = passed
+            // B30：所有成绩都参与（含未通关）
+            var bestByScore = all
                 .GroupBy(r => (r.SongId.ToString(), r.Difficulty.ToString()))
                 .Select(g => g.OrderByDescending(r => r.PlayerScore).First())
                 .ToList();
 
-            var maxPaceByChart = passed
+            // 每谱面历史最高 dive（含负值）
+            var maxPaceByChart = all
                 .GroupBy(r => (r.SongId.ToString(), r.Difficulty.ToString()))
                 .ToDictionary(g => g.Key, g => g.Max(r => (int)r.CalculatedPaceValue));
+
+            // EXACTIFICATION 只统计通关成绩
+            var passed = all.Where(r => r.CalculatedPaceValue >= 0).ToList();
 
             var maxShinyByChart = passed
                 .GroupBy(r => (r.SongId.ToString(), r.Difficulty.ToString()))
                 .ToDictionary(g => g.Key, g => g.Max(r => CountShinies(r)));
 
-            int totalExacts = maxShinyByChart.Values
-                .OrderByDescending(v => v)
-                .Take(10)
-                .Sum();
-            Plugin.TotalExacts = totalExacts;
+            var noteCountByChart = passed
+                .GroupBy(r => (r.SongId.ToString(), r.Difficulty.ToString()))
+                .ToDictionary(g => g.Key, g => g.Max(r => CountNotes(r)));
+
+            // EXACTIFICATION：Top 10 谱面的 EXACTIFICATION 率之和
+            // 单曲率 = 100 × EXACT数量 × 谱面定数 / 谱面总物量
+            var exactRates = new List<double>();
+            foreach (var kv in maxShinyByChart)
+            {
+                var (songId, diff) = kv.Key;
+                int shiny = kv.Value;
+                int notes = noteCountByChart.TryGetValue(kv.Key, out var n) ? n : 0;
+                int constant = ConstTable.Get(songId, diff);
+                if (notes <= 0 || constant <= 0) continue;
+
+                exactRates.Add(100.0 * shiny * constant / notes);
+            }
+
+            Plugin.TotalExacts = (int)Math.Round(
+                exactRates.OrderByDescending(v => v).Take(10).Sum());
 
             string fingerprint = string.Join("|",
                 bestByScore.OrderBy(r => r.SongId.ToString() + r.Difficulty.ToString())
@@ -1489,7 +1725,24 @@ public static class RatingEngine
                 int maxShiny = maxShinyByChart.TryGetValue(key, out var ms) ? ms : 0;
 
                 double baseRating = constant + ScoreBonus(r.PlayerScore);
-                double paceBonus = maxPace * 0.01;
+
+                double rating;
+                if (maxPace >= 0)
+                {
+                    rating = baseRating + maxPace * 0.01;
+                }
+                else
+                {
+                    // dive 为负：逐级累加惩罚
+                    // n = |dive|，sumDive = -(1+2+...+n)，penaltyPct = floor(sumDive / 1.2)
+                    // factor = 1 + penaltyPct/100，下限 0.1（最多减 90%）
+                    int n = -maxPace;                        // 1..15
+                    double sumDive = -(n * (n + 1) / 2.0);
+                    double penaltyPct = Math.Floor(sumDive / 1.2);
+                    double factor = 1.0 + penaltyPct / 100.0;
+                    if (factor < 0.1) factor = 0.1;
+                    rating = baseRating * factor;
+                }
 
                 chartRatings.Add(new ChartRating
                 {
@@ -1499,7 +1752,7 @@ public static class RatingEngine
                     Constant = constant,
                     PaceValue = maxPace,
                     ExactCount = maxShiny,
-                    Rating = baseRating + paceBonus
+                    Rating = rating
                 });
             }
 
@@ -1513,16 +1766,17 @@ public static class RatingEngine
             {
                 Plugin.SetRatingDelta(oldRating, newRating);
                 Plugin.Logger.LogInfo(
-                    $"[Rating] delta: {newRating - oldRating:+0.000;-0.000}  ({oldRating:F3} → {newRating:F3})");
+                    $"[Rating] delta {newRating - oldRating:+0.000;-0.000} ({oldRating:F3} → {newRating:F3})");
             }
 
             Plugin.PlayerRating = newRating;
             Plugin.FirstRatingReady = true;
 
             Plugin.Logger.LogInfo(
-                $"[Rating] ({reason}) 谱面 {chartRatings.Count} 个，⭐ 评级: {Plugin.PlayerRating:F3}，EXACT: {Plugin.TotalExacts}");
+                $"[Rating] ({reason}) 谱面 {chartRatings.Count} 个，评级 {Plugin.PlayerRating:F3}，EXACT {Plugin.TotalExacts}");
 
             DumpB30(chartRatings);
+            DumpAllScores(chartRatings);
         }
         catch (Exception ex)
         {
@@ -1605,9 +1859,56 @@ public static class RatingEngine
             Plugin.Logger.LogError($"[B30] 导出失败: {ex.Message}");
         }
     }
+
+    // 导出全谱面成绩（含未通关），文件名 scores.txt
+    static void DumpAllScores(List<ChartRating> sorted)
+    {
+        try
+        {
+            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            Directory.CreateDirectory(dir);
+            string file = Path.Combine(dir, "scores.txt");
+
+            var lines = new List<string>();
+            lines.Add("===========================================");
+            lines.Add("In Falsus Rating - 全部谱面成绩");
+            lines.Add($"玩家:     {Plugin.PlayerName}");
+            lines.Add($"更新时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            lines.Add($"总评级:   {Plugin.PlayerRating:F3}");
+            lines.Add($"总 EXACTIFICATION (Top 10): {Plugin.TotalExacts}");
+            lines.Add($"谱面数:   {sorted.Count}");
+            lines.Add("===========================================");
+            lines.Add("");
+            lines.Add("排名  Rating   曲名                          难度              分数        Dive  EXACT");
+
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                var c = sorted[i];
+                string name = SongInfoCache.GetName(c.SongId);
+                if (name.Length > 28) name = name.Substring(0, 28);
+
+                string rank   = $"#{i + 1}".PadRight(5);
+                string rating = c.Rating.ToString("F3").PadLeft(6);
+                string sName  = name.PadRight(28);
+                string diff   = $"{c.Difficulty} ({c.Constant})".PadRight(16);
+                string score  = c.Score.ToString().PadLeft(10);
+                string dive   = c.PaceValue.ToString().PadLeft(4);
+                string exact  = c.ExactCount.ToString().PadLeft(6);
+
+                lines.Add($"{rank} {rating}   {sName}  {diff}  {score}  {dive} {exact}");
+            }
+
+            File.WriteAllLines(file, lines);
+            Plugin.Logger.LogInfo($"[Scores] 已导出: {file}");
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogError($"[Scores] 导出失败: {ex.Message}");
+        }
+    }
 }
 
-// ========== Patch ==========
+// ========== Patches ==========
 [HarmonyPatch]
 public static class Patch_NH_VNA
 {
