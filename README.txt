@@ -2,6 +2,8 @@ In Falsus Rating
 ================
 为 In Falsus 提供类似 Arcaea Potential 的玩家评级系统
 
+编译前请改 csproj 里的 GameDir
+
 【前置条件】
 - BepInEx 6.0.0-be.7xx（IL2CPP x64 版本）
 
