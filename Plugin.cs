@@ -15,32 +15,148 @@ using ifapp.Game.Data;
 
 namespace InFalsusRating;
 
-[BepInPlugin("com.atres.infalsusrating", "In Falsus Rating", "0.1.0")]
+[BepInPlugin("com.atres.infalsusrating", "In Falsus Rating", "0.2.0")]
 public class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
     public static double PlayerRating = 0;
+    public static int TotalExacts = 0;
+    public static string PlayerName = "Player";
     public static List<ChartRating> ChartRatings = new List<ChartRating>();
     public static volatile bool IsPlaying = false;
-
-    // ⭐ 首次评级算出的标志
     public static volatile bool FirstRatingReady = false;
+    public static volatile bool OverlayManuallyHidden = false;
+
+    // ⭐ Rating 变化量显示
+    public static volatile bool HasRatingDelta = false;
+    public static double RatingDeltaValue = 0;
+    public static DateTime RatingDeltaShownAt = DateTime.MinValue;
+
+    public static void SetRatingDelta(double oldRating, double newRating)
+    {
+        double delta = newRating - oldRating;
+        if (Math.Abs(delta) < 0.005) return;
+        RatingDeltaValue = delta;
+        RatingDeltaShownAt = DateTime.Now;
+        HasRatingDelta = true;
+    }
+
+    public static void ClearRatingDelta()
+    {
+        HasRatingDelta = false;
+    }
 
     public override void Load()
     {
         Logger = base.Log;
         Logger.LogInfo("In Falsus Rating Mod 加载中...");
         ConstTable.Load();
-
-        // ⭐ 启动延迟线程
+        LoadPlayerName();
+        StartScenePatchLoop();
+        StartHotkeyListener();
         StartDelayedOverlay();
 
-        var harmony = new Harmony("com.yourname.infalsusrating");
+        var harmony = new Harmony("com.atres.infalsusrating");
         harmony.PatchAll(typeof(Patch_NH_VNA));
+        harmony.PatchAll(typeof(Patch_UIManagerUpdate));
         Logger.LogInfo("[Plugin] Harmony patch 已挂载");
     }
 
-    // ⭐ 等首次评级 或 最多等 5 秒，然后启动 overlay
+    // ---------- 读取本地名字 ----------
+    static void LoadPlayerName()
+    {
+        try
+        {
+            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            Directory.CreateDirectory(dir);
+            string file = Path.Combine(dir, "name.txt");
+
+            if (File.Exists(file))
+            {
+                string n = File.ReadAllText(file).Trim();
+                if (!string.IsNullOrWhiteSpace(n))
+                {
+                    PlayerName = n;
+                    Logger.LogInfo($"[Name] 已载入玩家名字: {PlayerName}");
+                    return;
+                }
+
+                File.WriteAllText(file, "Player");
+                Logger.LogInfo($"[Name] name.txt 为空，写入默认值 \"Player\"");
+            }
+            else
+            {
+                File.WriteAllText(file, "Player");
+                Logger.LogInfo($"[Name] 已创建配置文件: {file}");
+                Logger.LogInfo($"[Name] 请编辑该文件改成你的名字，然后重启游戏");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning($"[Name] 读取文件失败: {ex.Message}");
+        }
+
+        Logger.LogInfo($"[Name] 当前使用: {PlayerName}");
+    }
+
+    // ---------- 后台持续尝试 patch 场景 ----------
+    static void StartScenePatchLoop()
+    {
+        var t = new Thread(() =>
+        {
+            for (int i = 0; i < 300; i++)
+            {
+                try
+                {
+                    if (SceneTracker.TryEnsurePatched())
+                    {
+                        Logger.LogInfo("[Scene] patch 循环结束");
+                        return;
+                    }
+                }
+                catch { }
+                Thread.Sleep(100);
+            }
+            Logger.LogWarning("[Scene] patch 超时（30 秒）");
+        });
+        t.IsBackground = true;
+        t.Start();
+    }
+
+        // ---------- 全局快捷键：F8 切换 overlay 显示 ----------
+    [DllImport("user32.dll")]
+    static extern short GetAsyncKeyState(int vKey);
+
+    const int VK_F8 = 0x77;
+
+    static void StartHotkeyListener()
+    {
+        var t = new Thread(() =>
+        {
+            bool wasDown = false;
+
+            while (true)
+            {
+                try
+                {
+                    bool isDown = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
+
+                    if (isDown && !wasDown)
+                    {
+                        OverlayManuallyHidden = !OverlayManuallyHidden;
+                        Logger.LogInfo($"[Hotkey] F8 → overlay {(OverlayManuallyHidden ? "隐藏" : "显示")}");
+                    }
+                    wasDown = isDown;
+                }
+                catch { }
+                Thread.Sleep(50);
+            }
+        });
+        t.IsBackground = true;
+        t.Start();
+    }
+
+    // ---------- 延迟启动 overlay ----------
     static void StartDelayedOverlay()
     {
         var t = new Thread(() =>
@@ -51,7 +167,6 @@ public class Plugin : BasePlugin
                 const int MAX_WAIT_MS = 30000;
                 const int POLL_MS = 100;
 
-                // 每 100ms 检查一次，最多 5 秒
                 while (waited < MAX_WAIT_MS)
                 {
                     if (FirstRatingReady)
@@ -99,7 +214,7 @@ public static class GameScenePatcher
             }
             if (t == null) { Plugin.Logger.LogWarning("[Probe] GameScene 类型找不到"); return; }
 
-            var harmony = new Harmony("com.yourname.infalsusrating.gamescene");
+            var harmony = new Harmony("com.atres.infalsusrating.gamescene");
             var enter = typeof(GameSceneHooks).GetMethod("OnEnter", BindingFlags.Static | BindingFlags.Public);
             var exit  = typeof(GameSceneHooks).GetMethod("OnExit",  BindingFlags.Static | BindingFlags.Public);
 
@@ -126,7 +241,214 @@ public static class GameSceneHooks
     public static void OnExit()  { Plugin.IsPlaying = false; Plugin.Logger.LogInfo("[Probe] MENU (GameScene 关闭)"); }
 }
 
-// ========== UpdateLayeredWindow 版 Overlay ==========
+// ========== 场景活跃追踪 ==========
+public static class SceneTracker
+{
+    public static volatile bool IsInResultsScreen = false;
+
+    private static readonly string[] _candidateScenes = new[]
+    {
+        "ifapp.Game.Scenes.TitleScene",
+        "ifapp.Game.Scenes.HubScene",
+        "ifapp.Game.Scenes.SongSelectScene",
+        "ifapp.Game.Scenes.ResultsScene",
+        "ifapp.Game.Scenes.PackSelectScene",
+        "ifapp.Game.Scenes.StoryScene",
+        "ifapp.Game.Scenes.TimelineScene",
+        "ifapp.Game.Scenes.CreditsScene",
+        "ifapp.Game.Scenes.GameScene",
+        "ifapp.Game.Scenes.CharacterSelectLayer",
+    };
+
+    private static readonly HashSet<string> _allowedForOverlay = new HashSet<string>
+    {
+        "ifapp.Game.Scenes.HubScene",
+        "ifapp.Game.Scenes.SongSelectScene",
+        "ifapp.Game.Scenes.ResultsScene",
+    };
+
+    private static readonly HashSet<string> _blockingScenes = new HashSet<string>
+    {
+        "ifapp.Game.Scenes.TitleScene",
+        "ifapp.Game.Scenes.GameScene",
+        "ifapp.Game.Scenes.StoryScene",
+        "ifapp.Game.Scenes.TimelineScene",
+        "ifapp.Game.Scenes.CreditsScene",
+        "ifapp.Game.Scenes.PackSelectScene",
+    };
+
+    private static List<string> _sceneStack = new List<string>();
+    private static readonly object _lock = new object();
+    private static bool _patched = false;
+    private static readonly HashSet<string> _handled = new HashSet<string>();
+
+    public static bool ShouldShowOverlay()
+    {
+        if (IsInResultsScreen) return true;
+
+        lock (_lock)
+        {
+            if (_sceneStack.Count == 0) return true;
+
+            for (int i = _sceneStack.Count - 1; i >= 0; i--)
+            {
+                string s = _sceneStack[i];
+                if (_allowedForOverlay.Contains(s)) return true;
+                if (_blockingScenes.Contains(s)) return false;
+            }
+            return true;
+        }
+    }
+
+    public static bool TryEnsurePatched()
+    {
+        if (_patched) return true;
+
+        try
+        {
+            var harmony = new Harmony("com.atres.infalsusrating.scene");
+            var enter = typeof(SceneHooks).GetMethod("OnSceneEnable", BindingFlags.Static | BindingFlags.Public);
+            var exit  = typeof(SceneHooks).GetMethod("OnSceneDisable", BindingFlags.Static | BindingFlags.Public);
+
+            foreach (var className in _candidateScenes)
+            {
+                if (_handled.Contains(className)) continue;
+
+                Type t = null;
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    t = asm.GetType(className);
+                    if (t != null) break;
+                }
+                if (t == null) continue;
+
+                try
+                {
+                    var onEnable  = t.GetMethod("OnEnable",  BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    var onDisable = t.GetMethod("OnDisable", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    var awake     = t.GetMethod("Awake",     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    var onDestroy = t.GetMethod("OnDestroy", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                    bool didEnter = false, didExit = false;
+
+                    if (onEnable != null) { harmony.Patch(onEnable, postfix: new HarmonyMethod(enter)); didEnter = true; }
+                    else if (awake != null) { harmony.Patch(awake, postfix: new HarmonyMethod(enter)); didEnter = true; }
+
+                    if (onDisable != null) { harmony.Patch(onDisable, postfix: new HarmonyMethod(exit)); didExit = true; }
+                    else if (onDestroy != null) { harmony.Patch(onDestroy, postfix: new HarmonyMethod(exit)); didExit = true; }
+
+                    if (didEnter && didExit)
+                        Plugin.Logger.LogInfo($"[Scene] ✅ patch {t.Name}");
+
+                    _handled.Add(className);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Logger.LogWarning($"[Scene] patch {className} 失败: {ex.Message}");
+                    _handled.Add(className);
+                }
+            }
+
+            if (_handled.Count >= 3)
+            {
+                _patched = true;
+                Plugin.Logger.LogInfo($"[Scene] patch 阶段完成，共处理 {_handled.Count} 个类");
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogError($"[Scene] TryEnsurePatched: {ex}");
+        }
+
+        return false;
+    }
+
+    public static void Increment(string sceneName)
+    {
+        lock (_lock)
+        {
+            if (!_sceneStack.Contains(sceneName))
+                _sceneStack.Add(sceneName);
+
+            Plugin.Logger.LogInfo($"[Scene] ▶ {sceneName}  stack=[{string.Join(" > ", _sceneStack)}]");
+        }
+    }
+
+    public static void Decrement(string sceneName)
+    {
+        lock (_lock)
+        {
+            _sceneStack.Remove(sceneName);
+            Plugin.Logger.LogInfo($"[Scene] ◀ {sceneName}  stack=[{string.Join(" > ", _sceneStack)}]");
+        }
+    }
+}
+
+// ========== Scene 生命周期钩子 ==========
+public static class SceneHooks
+{
+    public static void OnSceneEnable(object __instance)
+    {
+        if (__instance == null) return;
+        string name = __instance.GetType().FullName;
+        SceneTracker.Increment(name);
+    }
+
+    public static void OnSceneDisable(object __instance)
+    {
+        if (__instance == null) return;
+        string name = __instance.GetType().FullName;
+        SceneTracker.Decrement(name);
+    }
+}
+
+// ========== 结算界面检测 ==========
+public static class ResultsDetector
+{
+    private static readonly string[] _candidates = new[]
+    {
+        "ResultsGradeContainer",
+        "ResultsTopBannerContainer",
+        "ResultsBottomBannerContainer",
+        "ResultsJacketContainer",
+        "ResultsBattleLayer",
+        "ResultsClearBadgeRow",
+    };
+
+    private static DateTime _lastCheck = DateTime.MinValue;
+    private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(300);
+
+    public static void Tick()
+    {
+        var now = DateTime.Now;
+        if ((now - _lastCheck) < Interval) return;
+        _lastCheck = now;
+
+        bool active = false;
+        try
+        {
+            foreach (var name in _candidates)
+            {
+                var go = UnityEngine.GameObject.Find(name);
+                if (go != null && go.activeInHierarchy)
+                {
+                    active = true;
+                    break;
+                }
+            }
+        }
+        catch { }
+
+        if (active != SceneTracker.IsInResultsScreen)
+        {
+            SceneTracker.IsInResultsScreen = active;
+            Plugin.Logger.LogInfo($"[Results] 结算界面: {(active ? "进入" : "退出")}");
+        }
+    }
+}
+
+// ========== Overlay ==========
 public static class Win32Overlay
 {
     const uint WS_EX_LAYERED     = 0x00080000;
@@ -145,15 +467,55 @@ public static class Win32Overlay
     const int ImageLockModeRead = 1;
     const int UnitPixel = 2;
     const int FontStyleBold = 1;
+    const int StringAlignmentNear = 0;
     const int StringAlignmentCenter = 1;
+    const int StringAlignmentLineCenter = 1;
     const int TextRenderingHintAntiAlias = 4;
+    const int LinearGradientModeVertical = 1;
+    const int WrapModeTile = 0;
 
     // ============ 可调项 ============
-    const int MAIN_FONT_SIZE = 72;       // 数字字号
-    const int OVERLAY_OFFSET_Y = 0;     // 距游戏客户区顶部的偏移（滑入到位时的 Y）
-    const float ANIM_LERP = 0.15f;       // 动画速度（0.05 慢，0.3 快）
-    const int ANIM_FRAME_MS = 16;        // 每帧毫秒（60fps）
-    // ==============================
+    const float NAME_FONT_RATIO  = 0.7f;
+    const float MAIN_FONT_RATIO  = 0.72f;
+    const float EXACT_FONT_RATIO = 0.46f;
+
+    const float NAME_X      = 0.05f;
+    const float NAME_W      = 0.4f;
+    const float NAME_Y      = 0.27f;
+    const float NAME_H      = 0.50f;
+
+    const float MAIN_X      = 0.43f;
+    const float MAIN_W      = 0.34f;
+    const float MAIN_Y      = 0.23f;
+    const float MAIN_H      = 0.6f;
+
+    const float EXACT_X     = 0.71f;
+    const float EXACT_W     = 0.28f;
+    const float EXACT_Y     = 0.35f;
+    const float EXACT_H     = 0.50f;
+
+    const float DELTA_FONT_RATIO = 0.32f;
+    const float DELTA_X = 0.43f;
+    const float DELTA_W = 0.34f;
+    const float DELTA_Y = 0.06f;
+    const float DELTA_H = 0.25f;
+
+    static readonly int COLOR_POSITIVE = unchecked((int)0xFF7FFF7F);
+    static readonly int COLOR_NEGATIVE = unchecked((int)0xFFFF7F7F);
+
+    static readonly int GRADIENT_TOP    = unchecked((int)0xFF80AEFF);
+    static readonly int GRADIENT_BOTTOM = unchecked((int)0xFFE0C9FF);
+
+    const int OVERLAY_OFFSET_Y = 0;
+    const float ANIM_LERP = 0.15f;
+    const int ANIM_FRAME_MS = 16;
+    const float DIGIT_LERP = 0.10f;
+    const int SHOW_CONFIRM_MS = 300;
+
+    const float MOUSE_NEAR_DIST     = 80f;
+    const float MOUSE_FULL_FADE_DIST = 20f;
+    const float FADE_OUT_SPEED      = 0.35f;
+    const float FADE_IN_SPEED       = 0.15f;
 
     [StructLayout(LayoutKind.Sequential)]
     struct GdiplusStartupInput
@@ -219,7 +581,6 @@ public static class Win32Overlay
     [StructLayout(LayoutKind.Sequential)]
     struct SIZE { public int cx, cy; }
 
-    // ⭐ 新增：普通 Win32 RECT（用于 GetClientRect）
     [StructLayout(LayoutKind.Sequential)]
     struct RECT { public int left, top, right, bottom; }
 
@@ -252,7 +613,6 @@ public static class Win32Overlay
     delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     static WndProcDelegate _wndProc;
 
-    // ===== GDI+ =====
     [DllImport("gdiplus.dll")]
     static extern int GdiplusStartup(out IntPtr token, ref GdiplusStartupInput input, IntPtr output);
     [DllImport("gdiplus.dll")]
@@ -284,6 +644,11 @@ public static class Win32Overlay
     [DllImport("gdiplus.dll")]
     static extern int GdipCreateSolidFill(int color, out IntPtr brush);
     [DllImport("gdiplus.dll")]
+    static extern int GdipCreateLineBrushFromRect(ref GPRECTF rect,
+        int color1, int color2, int mode, int wrapMode, out IntPtr brush);
+    [DllImport("gdiplus.dll")]
+    static extern int GdipDeleteBrush(IntPtr brush);
+    [DllImport("gdiplus.dll")]
     static extern int GdipCreateStringFormat(int formatAttributes, int language, out IntPtr format);
     [DllImport("gdiplus.dll")]
     static extern int GdipSetStringFormatAlign(IntPtr format, int align);
@@ -295,7 +660,6 @@ public static class Win32Overlay
     static extern int GdipDrawString(IntPtr graphics, string text, int length,
         IntPtr font, ref GPRECTF layoutRect, IntPtr stringFormat, IntPtr brush);
 
-    // ===== Win32 =====
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern ushort RegisterClassW(ref WNDCLASS lpWndClass);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -329,12 +693,11 @@ public static class Win32Overlay
     static extern bool UpdateLayeredWindow(IntPtr hWnd, IntPtr hdcDst,
         ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pptSrc,
         uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
-
-    // ⭐ 新增：GetClientRect
     [DllImport("user32.dll")]
     static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")]
+    static extern bool GetCursorPos(out POINT lpPoint);
 
-    // ===== GDI =====
     [DllImport("gdi32.dll")]
     static extern IntPtr CreateCompatibleDC(IntPtr hdc);
     [DllImport("gdi32.dll")]
@@ -350,7 +713,6 @@ public static class Win32Overlay
     static extern int AddFontResourceExW(string lpszFilename, uint fl, IntPtr pdv);
     const uint FR_PRIVATE = 0x10;
 
-    // ===== 状态 =====
     static IntPtr _gdiplusToken = IntPtr.Zero;
     static IntPtr _bgBitmap = IntPtr.Zero;
     static int _bgW = 360;
@@ -362,24 +724,42 @@ public static class Win32Overlay
     static IntPtr _dibOldObj = IntPtr.Zero;
 
     static IntPtr _fontFamily = IntPtr.Zero;
-    static IntPtr _font = IntPtr.Zero;
+    static IntPtr _fontName  = IntPtr.Zero;
+    static IntPtr _fontMain  = IntPtr.Zero;
+    static IntPtr _fontExact = IntPtr.Zero;
+    static IntPtr _fontDelta = IntPtr.Zero;
     static IntPtr _whiteBrush = IntPtr.Zero;
-    static IntPtr _stringFormat = IntPtr.Zero;
+    static IntPtr _brushGreen = IntPtr.Zero;
+    static IntPtr _brushRed = IntPtr.Zero;
+    static IntPtr _formatLeft   = IntPtr.Zero;
+    static IntPtr _formatCenter = IntPtr.Zero;
 
-    static string _mainText = "--.--";
+    static string _nameText  = "Player";
+    static string _mainText  = "--.--";
+    static string _exactText = "0";
+    static string _deltaText = "";
+    static bool _deltaIsPositive = true;
     static string _loadedFontName = null;
     static IntPtr _gameHwnd = IntPtr.Zero;
 
-    // ⭐ 位置 & 动画状态
-    static int _screenX = 0;          // 当前屏幕 X
-    static int _screenY = 0;          // 当前屏幕 Y（动画中每帧变）
-    static int _targetY = 0;          // 目标 Y（顶部中央）
-    static string _lastRenderedText = null;
+    static int _screenX = 0;
+    static int _screenY = 0;
+    static int _targetY = 0;
+    static string _lastRenderedName  = null;
+    static string _lastRenderedMain  = null;
+    static string _lastRenderedExact = null;
+    static string _lastRenderedDelta = null;
+    static double _displayRating = 0;
+    static double _displayExact = 0;
+    static float _currentAlpha = 1.0f;
+    static bool _stableShow = false;
+    static bool _pendingShow = false;
+    static DateTime _pendingShowAt = DateTime.MinValue;
 
     static readonly string BG_PATH = System.IO.Path.Combine(
         BepInEx.Paths.ConfigPath, "InFalsusRating", "bg.png");
     static readonly string FONT_PATH = System.IO.Path.Combine(
-        BepInEx.Paths.ConfigPath, "InFalsusRating", "font.ttf");
+        BepInEx.Paths.ConfigPath, "InFalsusRating", "font2.ttf");
 
     public static void Start(Func<string> mainProvider)
     {
@@ -425,12 +805,20 @@ public static class Win32Overlay
     {
         try
         {
-            if (!File.Exists(FONT_PATH)) { Plugin.Logger.LogInfo("[Overlay] 无自定义字体"); return; }
+            if (!File.Exists(FONT_PATH))
+            {
+                Plugin.Logger.LogInfo($"[Overlay] 自定义字体不存在: {FONT_PATH}（用 Segoe UI）");
+                return;
+            }
             int n = AddFontResourceExW(FONT_PATH, FR_PRIVATE, IntPtr.Zero);
             if (n > 0)
             {
-                _loadedFontName = "Sunghyun Sans";
+                _loadedFontName = "Furore";
                 Plugin.Logger.LogInfo($"[Overlay] 自定义字体已加载: {_loadedFontName}");
+            }
+            else
+            {
+                Plugin.Logger.LogWarning("[Overlay] AddFontResourceEx 返回 0");
             }
         }
         catch (Exception ex)
@@ -450,9 +838,19 @@ public static class Win32Overlay
         return FindWindowW(null, "In Falsus");
     }
 
+    static IntPtr CreateVerticalGradient(ref GPRECTF rect)
+    {
+        IntPtr brush = IntPtr.Zero;
+        int status = GdipCreateLineBrushFromRect(ref rect,
+            GRADIENT_TOP, GRADIENT_BOTTOM,
+            LinearGradientModeVertical, WrapModeTile, out brush);
+        if (status != 0) return IntPtr.Zero;
+        return brush;
+    }
+
     static void SetupGdiplusResources()
     {
-        string familyName = _loadedFontName ?? "Sunghyun Sans Bold";
+        string familyName = _loadedFontName ?? "Segoe UI";
         int status = GdipCreateFontFamilyFromName(familyName, IntPtr.Zero, out _fontFamily);
         if (status != 0 || _fontFamily == IntPtr.Zero)
         {
@@ -460,11 +858,29 @@ public static class Win32Overlay
             GdipCreateFontFamilyFromName("Segoe UI", IntPtr.Zero, out _fontFamily);
         }
 
-        GdipCreateFont(_fontFamily, MAIN_FONT_SIZE, FontStyleBold, UnitPixel, out _font);
+        float nameSize  = _bgH * NAME_FONT_RATIO;
+        float mainSize  = _bgH * MAIN_FONT_RATIO;
+        float exactSize = _bgH * EXACT_FONT_RATIO;
+        float deltaSize = _bgH * DELTA_FONT_RATIO;
+
+        GdipCreateFont(_fontFamily, nameSize,  FontStyleBold, UnitPixel, out _fontName);
+        GdipCreateFont(_fontFamily, mainSize,  FontStyleBold, UnitPixel, out _fontMain);
+        GdipCreateFont(_fontFamily, exactSize, FontStyleBold, UnitPixel, out _fontExact);
+        GdipCreateFont(_fontFamily, deltaSize, FontStyleBold, UnitPixel, out _fontDelta);
+
         GdipCreateSolidFill(unchecked((int)0xFFFFFFFF), out _whiteBrush);
-        GdipCreateStringFormat(0, 0, out _stringFormat);
-        GdipSetStringFormatAlign(_stringFormat, StringAlignmentCenter);
-        GdipSetStringFormatLineAlign(_stringFormat, StringAlignmentCenter);
+        GdipCreateSolidFill(COLOR_POSITIVE, out _brushGreen);
+        GdipCreateSolidFill(COLOR_NEGATIVE, out _brushRed);
+
+        GdipCreateStringFormat(0, 0, out _formatLeft);
+        GdipSetStringFormatAlign(_formatLeft, StringAlignmentNear);
+        GdipSetStringFormatLineAlign(_formatLeft, StringAlignmentLineCenter);
+
+        GdipCreateStringFormat(0, 0, out _formatCenter);
+        GdipSetStringFormatAlign(_formatCenter, StringAlignmentCenter);
+        GdipSetStringFormatLineAlign(_formatCenter, StringAlignmentLineCenter);
+
+        Plugin.Logger.LogInfo($"[Overlay] 字体大小: Name={nameSize:F1} Main={mainSize:F1} Exact={exactSize:F1} Delta={deltaSize:F1}");
     }
 
     static void SetupDib()
@@ -490,6 +906,9 @@ public static class Win32Overlay
     static void RenderToDib()
     {
         IntPtr work = IntPtr.Zero;
+        IntPtr gradMain = IntPtr.Zero;
+        IntPtr gradExact = IntPtr.Zero;
+
         try
         {
             int status = GdipCloneBitmapAreaI(0, 0, _bgW, _bgH, PixelFormat32bppARGB,
@@ -503,8 +922,43 @@ public static class Win32Overlay
             if (GdipGetImageGraphicsContext(work, out var gfx) == 0)
             {
                 GdipSetTextRenderingHint(gfx, TextRenderingHintAntiAlias);
-                var rectf = new GPRECTF { X = 0, Y = 5, Width = _bgW, Height = _bgH };
-                GdipDrawString(gfx, _mainText, -1, _font, ref rectf, _stringFormat, _whiteBrush);
+
+                var rectName = new GPRECTF
+                {
+                    X = _bgW * NAME_X, Y = _bgH * NAME_Y,
+                    Width = _bgW * NAME_W, Height = _bgH * NAME_H
+                };
+                GdipDrawString(gfx, _nameText, -1, _fontName, ref rectName, _formatLeft, _whiteBrush);
+
+                var rectMain = new GPRECTF
+                {
+                    X = _bgW * MAIN_X, Y = _bgH * MAIN_Y,
+                    Width = _bgW * MAIN_W, Height = _bgH * MAIN_H
+                };
+                gradMain = CreateVerticalGradient(ref rectMain);
+                var brushMain = gradMain != IntPtr.Zero ? gradMain : _whiteBrush;
+                GdipDrawString(gfx, _mainText, -1, _fontMain, ref rectMain, _formatCenter, brushMain);
+
+                var rectExact = new GPRECTF
+                {
+                    X = _bgW * EXACT_X, Y = _bgH * EXACT_Y,
+                    Width = _bgW * EXACT_W, Height = _bgH * EXACT_H
+                };
+                gradExact = CreateVerticalGradient(ref rectExact);
+                var brushExact = gradExact != IntPtr.Zero ? gradExact : _whiteBrush;
+                GdipDrawString(gfx, _exactText, -1, _fontExact, ref rectExact, _formatCenter, brushExact);
+
+                if (!string.IsNullOrEmpty(_deltaText))
+                {
+                    var rectDelta = new GPRECTF
+                    {
+                        X = _bgW * DELTA_X, Y = _bgH * DELTA_Y,
+                        Width = _bgW * DELTA_W, Height = _bgH * DELTA_H
+                    };
+                    var brushDelta = _deltaIsPositive ? _brushGreen : _brushRed;
+                    GdipDrawString(gfx, _deltaText, -1, _fontDelta, ref rectDelta, _formatCenter, brushDelta);
+                }
+
                 GdipDeleteGraphics(gfx);
             }
 
@@ -541,8 +995,54 @@ public static class Win32Overlay
         }
         finally
         {
+            if (gradMain != IntPtr.Zero) GdipDeleteBrush(gradMain);
+            if (gradExact != IntPtr.Zero) GdipDeleteBrush(gradExact);
             if (work != IntPtr.Zero) GdipDisposeImage(work);
         }
+    }
+
+    static void UpdateMouseAlpha()
+    {
+        float targetAlpha = 1.0f;
+
+        try
+        {
+            POINT mouse;
+            if (GetCursorPos(out mouse))
+            {
+                int left = _screenX;
+                int top = _screenY;
+                int right = _screenX + _bgW;
+                int bottom = _screenY + _bgH;
+
+                int dx = 0, dy = 0;
+                if (mouse.x < left) dx = left - mouse.x;
+                else if (mouse.x > right) dx = mouse.x - right;
+
+                if (mouse.y < top) dy = top - mouse.y;
+                else if (mouse.y > bottom) dy = mouse.y - bottom;
+
+                double dist = Math.Sqrt(dx * dx + dy * dy);
+
+                if (dist <= MOUSE_FULL_FADE_DIST)
+                    targetAlpha = 0f;
+                else if (dist <= MOUSE_NEAR_DIST)
+                    targetAlpha = (float)((dist - MOUSE_FULL_FADE_DIST)
+                                        / (MOUSE_NEAR_DIST - MOUSE_FULL_FADE_DIST));
+                else
+                    targetAlpha = 1f;
+            }
+        }
+        catch { }
+
+        float speed = targetAlpha < _currentAlpha ? FADE_OUT_SPEED : FADE_IN_SPEED;
+        _currentAlpha += (targetAlpha - _currentAlpha) * speed;
+
+        if (Math.Abs(targetAlpha - _currentAlpha) < 0.005f)
+            _currentAlpha = targetAlpha;
+
+        if (_currentAlpha < 0f) _currentAlpha = 0f;
+        if (_currentAlpha > 1f) _currentAlpha = 1f;
     }
 
     static void CommitToWindow(IntPtr hWnd)
@@ -550,18 +1050,20 @@ public static class Win32Overlay
         var ptDst = new POINT { x = _screenX, y = _screenY };
         var sz = new SIZE { cx = _bgW, cy = _bgH };
         var ptSrc = new POINT { x = 0, y = 0 };
+
+        byte alphaByte = (byte)Math.Clamp((int)(_currentAlpha * 255f), 0, 255);
+
         var blend = new BLENDFUNCTION
         {
             BlendOp = 0,
             BlendFlags = 0,
-            SourceConstantAlpha = 255,
+            SourceConstantAlpha = alphaByte,
             AlphaFormat = 1
         };
         UpdateLayeredWindow(hWnd, IntPtr.Zero, ref ptDst, ref sz,
             _memDC, ref ptSrc, 0, ref blend, ULW_ALPHA);
     }
 
-    // ⭐ 计算目标位置（顶部中央）
     static void ComputeTargetPosition()
     {
         if (_gameHwnd == IntPtr.Zero || !IsWindow(_gameHwnd)) return;
@@ -574,10 +1076,7 @@ public static class Win32Overlay
 
         int clientWidth = rc.right - rc.left;
 
-        // 水平居中
         _screenX = pt.x + (clientWidth - _bgW) / 2;
-
-        // 目标 Y = 客户区顶部 + 偏移
         _targetY = pt.y + OVERLAY_OFFSET_Y;
     }
 
@@ -592,7 +1091,9 @@ public static class Win32Overlay
         Plugin.Logger.LogInfo($"[Overlay] 游戏窗口 HWND: 0x{_gameHwnd.ToInt64():X}");
 
         ComputeTargetPosition();
-        _screenY = _targetY;   // 初始就在目标位置
+        bool initialShow = SceneTracker.ShouldShowOverlay();
+        _screenY = initialShow ? _targetY : _targetY - _bgH - 40;
+        Plugin.Logger.LogInfo($"[Overlay] 初始显示状态: {(initialShow ? "显示" : "隐藏")}");
 
         _wndProc = WndProcImpl;
 
@@ -617,13 +1118,22 @@ public static class Win32Overlay
 
         ShowWindow(hWnd, SW_SHOWNOACTIVATE);
 
-        // 首次渲染
-        _mainText = mainProvider() ?? "--.--";
+        // 首次：直接 snap 到当前值，不做过渡
+        _displayRating = Plugin.PlayerRating;
+        _displayExact  = Plugin.TotalExacts;
+
+        _nameText  = Plugin.PlayerName;
+        _mainText  = _displayRating.ToString("F2");
+        _exactText = ((int)Math.Round(_displayExact)).ToString();
+        _deltaText = "";
+        _lastRenderedName  = _nameText;
+        _lastRenderedMain  = _mainText;
+        _lastRenderedExact = _exactText;
+        _lastRenderedDelta = "";
+
         RenderToDib();
-        _lastRenderedText = _mainText;
         CommitToWindow(hWnd);
 
-        // ⭐ 更新 + 动画线程
         var updater = new Thread(() =>
         {
             while (true)
@@ -638,15 +1148,45 @@ public static class Win32Overlay
                     }
 
                     ComputeTargetPosition();
+                    UpdateMouseAlpha();
 
-                    // ⭐ 目标 Y：
-                    //   - 游玩中：滑到游戏客户区上方外侧（滑出）
-                    //   - 其它：滑到顶部中央（滑入）
-                    int destY = Plugin.IsPlaying
-                        ? _targetY - _bgH - 40
-                        : _targetY;
+                    // ⭐ 显示状态稳定化：显示需 300ms 确认，隐藏立即生效
+                    bool rawShouldShow = SceneTracker.ShouldShowOverlay() && !Plugin.OverlayManuallyHidden;
 
-                    // ⭐ lerp 平滑逼近
+                    if (rawShouldShow != _stableShow)
+                    {
+                        if (!rawShouldShow)
+                        {
+                            // 隐藏：立即
+                            _stableShow = false;
+                            _pendingShow = false;
+                        }
+                        else
+                        {
+                            // 显示：需确认 300ms
+                            if (!_pendingShow)
+                            {
+                                _pendingShow = true;
+                                _pendingShowAt = DateTime.Now;
+                            }
+                            else if ((DateTime.Now - _pendingShowAt).TotalMilliseconds >= SHOW_CONFIRM_MS)
+                            {
+                                _stableShow = true;
+                                _pendingShow = false;
+                                Plugin.Logger.LogInfo("[Overlay] 显示确认");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _pendingShow = false;
+                    }
+
+                    bool shouldShow = _stableShow;
+                    int destY = shouldShow
+                        ? _targetY
+                        : _targetY - _bgH - 40;
+
                     if (_screenY != destY)
                     {
                         int diff = destY - _screenY;
@@ -656,15 +1196,59 @@ public static class Win32Overlay
                             _screenY += (int)(diff * ANIM_LERP);
                     }
 
-                    // 文本更新
-                    _mainText = mainProvider() ?? "--.--";
-                    if (_mainText != _lastRenderedText)
+                    double targetRating = Plugin.PlayerRating;
+                    int    targetExact  = Plugin.TotalExacts;
+
+                    double ratingDiff = targetRating - _displayRating;
+                    if (Math.Abs(ratingDiff) < 0.005)
+                        _displayRating = targetRating;
+                    else
+                        _displayRating += ratingDiff * DIGIT_LERP;
+
+                    double exactDiff = targetExact - _displayExact;
+                    if (Math.Abs(exactDiff) < 0.5)
+                        _displayExact = targetExact;
+                    else
+                        _displayExact += exactDiff * DIGIT_LERP;
+
+                    // ⭐ 更新所有要渲染的文本
+                    _nameText  = Plugin.PlayerName;
+                    _mainText  = _displayRating.ToString("F2");
+                    _exactText = ((int)Math.Round(_displayExact)).ToString();
+
+                    // ⭐ Delta 显示（8 秒超时清除）
+                    if (Plugin.HasRatingDelta)
                     {
-                        RenderToDib();
-                        _lastRenderedText = _mainText;
+                        if ((DateTime.Now - Plugin.RatingDeltaShownAt).TotalSeconds > 8)
+                        {
+                            Plugin.ClearRatingDelta();
+                            _deltaText = "";
+                        }
+                        else
+                        {
+                            _deltaIsPositive = Plugin.RatingDeltaValue >= 0;
+                            string sign = _deltaIsPositive ? "+" : "-";
+                            _deltaText = $"{sign}{Math.Abs(Plugin.RatingDeltaValue):F2}";
+                        }
+                    }
+                    else
+                    {
+                        _deltaText = "";
                     }
 
-                    // ⭐ 每帧提交（位置在变）
+                    // ⭐ 只在有变化时重渲染
+                    if (_nameText != _lastRenderedName ||
+                        _mainText != _lastRenderedMain ||
+                        _exactText != _lastRenderedExact ||
+                        _deltaText != _lastRenderedDelta)
+                    {
+                        RenderToDib();
+                        _lastRenderedName  = _nameText;
+                        _lastRenderedMain  = _mainText;
+                        _lastRenderedExact = _exactText;
+                        _lastRenderedDelta = _deltaText;
+                    }
+
                     CommitToWindow(hWnd);
                 }
                 catch { }
@@ -832,6 +1416,14 @@ public static class RatingEngine
     private static readonly TimeSpan MinInterval = TimeSpan.FromMilliseconds(500);
     private static string _lastFingerprint = null;
 
+    static int CountShinies(GameResultV4 r)
+    {
+        return r.TapCounts.Shiny
+            + r.HoldCounts.Shiny
+            + r.SkyAreaCounts.Shiny
+            + r.FlickCounts.Shiny;
+    }
+
     public static void Recalculate(object gameResults, string reason, bool throttle = true)
     {
         if (gameResults == null) return;
@@ -856,19 +1448,26 @@ public static class RatingEngine
             var all = new List<GameResultV4>();
             for (int i = 0; i < validCount; i++) all.Add(arr[i]);
 
-            // 过滤未通关
             var passed = all.Where(r => r.CalculatedPaceValue >= 0).ToList();
 
-            // 每谱面最高分
             var bestByScore = passed
                 .GroupBy(r => (r.SongId.ToString(), r.Difficulty.ToString()))
                 .Select(g => g.OrderByDescending(r => r.PlayerScore).First())
                 .ToList();
 
-            // 每谱面历史最大 dive
             var maxPaceByChart = passed
                 .GroupBy(r => (r.SongId.ToString(), r.Difficulty.ToString()))
                 .ToDictionary(g => g.Key, g => g.Max(r => (int)r.CalculatedPaceValue));
+
+            var maxShinyByChart = passed
+                .GroupBy(r => (r.SongId.ToString(), r.Difficulty.ToString()))
+                .ToDictionary(g => g.Key, g => g.Max(r => CountShinies(r)));
+
+            int totalExacts = maxShinyByChart.Values
+                .OrderByDescending(v => v)
+                .Take(10)
+                .Sum();
+            Plugin.TotalExacts = totalExacts;
 
             string fingerprint = string.Join("|",
                 bestByScore.OrderBy(r => r.SongId.ToString() + r.Difficulty.ToString())
@@ -877,7 +1476,6 @@ public static class RatingEngine
             if (fingerprint == _lastFingerprint) return;
             _lastFingerprint = fingerprint;
 
-            // 算单曲 rating
             var chartRatings = new List<ChartRating>();
             foreach (var r in bestByScore)
             {
@@ -888,6 +1486,7 @@ public static class RatingEngine
 
                 var key = (songId, diff);
                 int maxPace = maxPaceByChart.TryGetValue(key, out var mp) ? mp : 0;
+                int maxShiny = maxShinyByChart.TryGetValue(key, out var ms) ? ms : 0;
 
                 double baseRating = constant + ScoreBonus(r.PlayerScore);
                 double paceBonus = maxPace * 0.01;
@@ -899,19 +1498,30 @@ public static class RatingEngine
                     Score = r.PlayerScore,
                     Constant = constant,
                     PaceValue = maxPace,
+                    ExactCount = maxShiny,
                     Rating = baseRating + paceBonus
                 });
             }
 
             chartRatings = chartRatings.OrderByDescending(c => c.Rating).ToList();
             Plugin.ChartRatings = chartRatings;
-            Plugin.PlayerRating = CalculatePlayerRating(chartRatings);
+
+            double oldRating = Plugin.PlayerRating;
+            double newRating = CalculatePlayerRating(chartRatings);
+
+            if (Plugin.FirstRatingReady && Math.Abs(newRating - oldRating) > 0.005)
+            {
+                Plugin.SetRatingDelta(oldRating, newRating);
+                Plugin.Logger.LogInfo(
+                    $"[Rating] delta: {newRating - oldRating:+0.000;-0.000}  ({oldRating:F3} → {newRating:F3})");
+            }
+
+            Plugin.PlayerRating = newRating;
             Plugin.FirstRatingReady = true;
 
             Plugin.Logger.LogInfo(
-                $"[Rating] ({reason}) 谱面 {chartRatings.Count} 个，⭐ 玩家评级: {Plugin.PlayerRating:F3}");
+                $"[Rating] ({reason}) 谱面 {chartRatings.Count} 个，⭐ 评级: {Plugin.PlayerRating:F3}，EXACT: {Plugin.TotalExacts}");
 
-            // ⭐ 导出 B30
             DumpB30(chartRatings);
         }
         catch (Exception ex)
@@ -946,7 +1556,6 @@ public static class RatingEngine
         return sum / weightSum;
     }
 
-    // ⭐ 导出 B30
     static void DumpB30(List<ChartRating> sorted)
     {
         try
@@ -958,12 +1567,14 @@ public static class RatingEngine
             var lines = new List<string>();
             lines.Add("===========================================");
             lines.Add("In Falsus Rating - B30 排行");
+            lines.Add($"玩家:     {Plugin.PlayerName}");
             lines.Add($"更新时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             lines.Add($"总评级:   {Plugin.PlayerRating:F3}");
+            lines.Add($"总 EXACT (Top 10): {Plugin.TotalExacts}");
             lines.Add($"谱面数:   {sorted.Count}");
             lines.Add("===========================================");
             lines.Add("");
-            lines.Add("排名  Rating   曲名                          难度              分数        Dive");
+            lines.Add("排名  Rating   曲名                          难度              分数        Dive  EXACT");
 
             int n = Math.Min(30, sorted.Count);
             for (int i = 0; i < n; i++)
@@ -978,8 +1589,9 @@ public static class RatingEngine
                 string diff   = $"{c.Difficulty} ({c.Constant})".PadRight(16);
                 string score  = c.Score.ToString().PadLeft(10);
                 string dive   = c.PaceValue.ToString().PadLeft(4);
+                string exact  = c.ExactCount.ToString().PadLeft(6);
 
-                string line = $"{rank} {rating}   {sName}  {diff}  {score}  {dive}";
+                string line = $"{rank} {rating}   {sName}  {diff}  {score}  {dive} {exact}";
                 lines.Add(line);
 
                 Plugin.Logger.LogInfo($"[B30] {line}");
@@ -1010,17 +1622,33 @@ public static class Patch_NH_VNA
         return nhType?.GetMethod("_vNA", BindingFlags.Public | BindingFlags.Instance);
     }
 
-    // ⭐ 加 __instance 参数，用来初始化 SongInfoCache
     static void Postfix(object __instance, object __result)
     {
-        GameScenePatcher.EnsurePatched();
-
-        // 首次时加载曲名缓存
         if (__instance != null)
             SongInfoCache.Load(__instance);
 
         if (__result == null) return;
         RatingEngine.Recalculate(__result, "界面刷新");
+    }
+}
+
+[HarmonyPatch]
+public static class Patch_UIManagerUpdate
+{
+    static MethodBase TargetMethod()
+    {
+        Type t = null;
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            t = asm.GetType("ifapp.Game.UI.Common.UIManager");
+            if (t != null) break;
+        }
+        return t?.GetMethod("Update", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+    }
+
+    static void Postfix()
+    {
+        ResultsDetector.Tick();
     }
 }
 
@@ -1030,6 +1658,7 @@ public class ChartRating
     public string Difficulty;
     public ulong Score;
     public int Constant;
-    public int PaceValue; 
+    public int PaceValue;
+    public int ExactCount;
     public double Rating;
 }
