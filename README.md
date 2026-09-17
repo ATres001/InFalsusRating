@@ -41,8 +41,10 @@ In Falsus Rating
 - 未通关（dive < 0）的成绩不计入
 
 【开源协议】
-
 MIT License
+
+【致谢】
+- 字体：[Furore](https://www.fontsquirrel.com/fonts/furore) by Erik Kirtley (SIL Open Font License 1.1)
 
 【作者留言】
 目前该模组处于早期开发版本。出现问题，有建议，请随时联系我
