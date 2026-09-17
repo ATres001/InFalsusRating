@@ -1,0 +1,23 @@
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+
+# VS / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# BepInEx（别人机器上的）
+BepInEx/
+doorstop_config.ini
+winhttp.dll
+
+# 运行时生成的用户数据
+*.log
+name.txt
+const.json
+b30.txt
+dump_readable.txt
