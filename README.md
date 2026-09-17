@@ -1,6 +1,7 @@
 In Falsus Rating
 ================
 为 In Falsus 提供类似 Arcaea Potential 的玩家评级系统
+此项目由AI（Deepseek v4）共同构筑
 
 编译前请改 csproj 里的 GameDir
 
