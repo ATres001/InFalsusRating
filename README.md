@@ -1,9 +1,8 @@
-```markdown
 # In Falsus Rating
 
 为 In Falsus 提供类似 Arcaea Potential 的玩家评级系统。
 
-> 此项目由 AI（DeepSeek v4）共同构筑。
+> 此项目由 AI（DeepSeek v4 pro）共同构筑。
 > 意见和反馈可以进入QQ群 384322205 提出，也可以来聊天和潜水，新版本包也会在群内发布！
 
 编译前请修改 `csproj` 里的 `GameDir`。
@@ -43,12 +42,50 @@ Overlay 只在以下界面显示：
 
 ---
 
+## 快捷键
+
+- **F8** — 手动切换 overlay 显示/隐藏
+- **F9** — 导出 B30 图片（`b30.png` / `b30_nojacket.png`）
+
+---
+
 ## 输出文件
 
 每次评级更新会导出两份文件到 `BepInEx\config\InFalsusRating\`：
 
 - `b30.txt` — B30 排行（Top 30）
 - `scores.txt` — 全部谱面成绩（含未通关）
+
+按 F9 导出 B30 图片：
+
+- `b30.png` — 曲绘版 B30（需要 `jacket/` 文件夹，缺失时跳过）
+- `b30_nojacket.png` — 无曲绘版 B30（**始终导出**）：30 行简化卡片
+  （排名 / 定数 / 曲名 / 曲师 / 单曲 rating / 单曲 ext），
+  顶部玩家信息（名字 / 总评级 / EXACTIFICATION），
+  左下方 EXACTIFICATION B10 排行（位于 `b30.png`）
+
+---
+
+## B30 图片资源
+
+放在 `BepInEx\config\InFalsusRating\` 下：
+
+```
+jacket/          曲绘（按曲目 base_name 命名，如 alamode.png）；
+                 background_big.png 为曲绘版整图底图 (请在release版本中下载DLC1)
+b30_cards/
+  background/    曲绘版卡片底图（按 rank 分档 1.png / 2.png / 3.png）
+  difficulty/    难度底板（按 曲目ID_难度 / 曲目ID / 难度 依次查找）
+  score/         评分底板（0~4.png 分数分档 / 曲目ID_难度 谱面专属）
+  fcpm/          pm.png / fc.png 徽章（PM 优先）
+  decor/         装饰层（按 rank 分档 1.png / 2.png / 3.png）
+  exact/         无曲绘版行背景（按难度
+                 Minimal / Evolved / Ultimate / Forbidden .png）
+  b30bg.png      无曲绘版整图背景（放在 exact/ 或 b30_cards/ 下均可，
+                 其尺寸决定图片大小，原样不拉伸）
+catalog.json     曲目元数据（id / title / artist / base_name），
+                 曲名、曲师和曲绘文件名的权威来源
+```
 
 ---
 
@@ -62,16 +99,11 @@ Overlay 只在以下界面显示：
 
 | 文件 | 说明 |
 |---|---|
-| `name.txt` | 玩家名字（显示在 overlay 上） |
+| `name.txt` | 玩家名字（显示在 overlay 和图片上） |
 | `const.json` | 谱面定数覆盖（默认从游戏内自动 dump） |
+| `catalog.json` | 曲目元数据（title / artist / base_name） |
 | `bg.png` | overlay 背景图（尺寸决定窗口大小） |
 | `font2.ttf` | 自定义字体（推荐 Furore） |
-
----
-
-## 快捷键
-
-- **F8** — 手动切换 overlay 显示/隐藏
 
 ---
 
@@ -139,17 +171,23 @@ MIT License
 
 ---
 
+## 第三方资产说明
+
+THIRD-PARTY-NOTICES
+
+---
+
 ## 致谢
 
 - 字体：[Furore](https://www.fontsquirrel.com/fonts/furore) by Erik Kirtley (SIL Open Font License 1.1)
+- 数据库：[InFalsusUnofficialB30](https://github.com/mewcodex/InFalsusUnofficialB30) by mewcodex
 
 ---
 
 ## 作者留言
 
-目前该模组处于早期开发版本。出现问题、有建议，请随时联系我。
+目前该模组处于早期开发版本。问题，建议请随时告知
 
 最终解释权归 ATRES (qq2162004452) 所有。此 Mod 为玩家自制模组，与 Lowiro 无直接关系。我将会持续维护且开源该项目，直至游戏内发布自身的 rating 机制或者收到任何的版权警告。
 
 All rights reserved by Atres.
-```
