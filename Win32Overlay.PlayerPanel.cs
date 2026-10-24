@@ -342,6 +342,7 @@ public static partial class Win32Overlay
         static int _dragStartY = 0, _dragMoved = 0;
         static float _dragStartScroll = 0f;
         static volatile int _wheelAccum = 0;
+        static Dictionary<float, IntPtr> rowConstFontDictionary = new();
         static IntPtr _pFontRowNum = IntPtr.Zero;
         static IntPtr _pFontTab = IntPtr.Zero;
         static IntPtr _pBrTabOn = IntPtr.Zero, _pBrTabOff = IntPtr.Zero, _pBrTabHover = IntPtr.Zero;
@@ -1894,9 +1895,20 @@ public static partial class Win32Overlay
             _pRowTitleFam  = _pFontFamily;
             _pRowFuroreFam = num;
             _pRowFamSrc    = num;
-            if (_pFontRowNum  == IntPtr.Zero) GdipCreateFont(num, 30f * ROW_S, 1 , UnitPixel, out _pFontRowNum);
+            if (_pFontRowNum == IntPtr.Zero)
+            {
+                _pFontRowNum = RegisterRowFont(num, 1);
+                float constSize = ConstTable.TextSizeScale();
+                rowConstFontDictionary[constSize] = RegisterRowFont(num, constSize);
+            }
 
             if (_pFontTab     == IntPtr.Zero) GdipCreateFont(num, FS_TAB, 1 , UnitPixel, out _pFontTab);
+        }
+
+        static IntPtr RegisterRowFont(IntPtr fontFamily, float scale)
+        {
+            GdipCreateFont(fontFamily, 30f * ROW_S * scale, 1 , UnitPixel, out var tmp);
+            return tmp;
         }
 
         static IntPtr RowFamSrc() => _fontFamily != IntPtr.Zero ? _fontFamily : _pFontFamily;
@@ -1930,6 +1942,12 @@ public static partial class Win32Overlay
             IntPtr src = RowFamSrc();
             if (src == _pRowFamSrc) return;
 
+            var arr = rowConstFontDictionary.ToArray();
+            foreach (var pair in arr)
+            {
+                if (pair.Value != IntPtr.Zero) GdipDeleteFont(_pFontTab);
+                rowConstFontDictionary.Remove(pair.Key);
+            }
             if (_pFontRowNum != IntPtr.Zero) { GdipDeleteFont(_pFontRowNum); _pFontRowNum = IntPtr.Zero; }
             if (_pFontTab    != IntPtr.Zero) { GdipDeleteFont(_pFontTab);    _pFontTab    = IntPtr.Zero; }
             foreach (var kv in _famTitleBase)  if (kv.Value != IntPtr.Zero) GdipDeleteFont(kv.Value);
@@ -1945,7 +1963,9 @@ public static partial class Win32Overlay
             _pRowFamSrc    = src;
             _pRowNumFamily = src;
             _pRowFuroreFam = src;
-            GdipCreateFont(src, 30f * ROW_S, 1 , UnitPixel, out _pFontRowNum);
+            _pFontRowNum = RegisterRowFont(src, 1);
+            float constSize = ConstTable.TextSizeScale();
+            rowConstFontDictionary[constSize] = RegisterRowFont(src, constSize);
             GdipCreateFont(src, FS_TAB,      1 , UnitPixel, out _pFontTab);
 
             MakeNameFont();
@@ -3106,7 +3126,12 @@ public static partial class Win32Overlay
 
                         IntPtr dc = Brush(B30CardExporter.GetB10DiffColor(diff));
                         RowTextR(gfx, TaskConfig.DiffShort(diff), _pFontRowNum, dc, dx, y);
-                        RowTextR(gfx, ConstTable.Text(ConstTable.Get(id, diff)), _pFontRowNum, dc, nx, y);
+                        float constSize = ConstTable.TextSizeScale();
+                        if (!rowConstFontDictionary.TryGetValue(constSize, out var _pFontConst))
+                        {
+                            rowConstFontDictionary[constSize] = _pFontConst = RegisterRowFont(_pRowFamSrc, constSize);
+                        }
+                        RowTextR(gfx, ConstTable.Text(ConstTable.Get(id, diff)), _pFontConst, dc, nx, y);
                     }
                     else
                     {
@@ -8471,7 +8496,12 @@ public static partial class Win32Overlay
             Draw(gfx, RowBg(difficulty), ROW_CARD_X, y, ROW_W, ROW_H);
 
             int diffColor = B30CardExporter.GetB10DiffColor(difficulty);
-            RowTextL(gfx, ConstTable.Text(constant), _pFontRowNum, Brush(diffColor), ROW_CARD_X + (int)(12 * ROW_S), cy);
+            float constSize = ConstTable.TextSizeScale();
+            if (!rowConstFontDictionary.TryGetValue(constSize, out var _pFontConst))
+            {
+                rowConstFontDictionary[constSize] = _pFontConst = RegisterRowFont(_pRowFamSrc, constSize);
+            }
+            RowTextL(gfx, ConstTable.Text(constant), _pFontConst, Brush(diffColor), ROW_CARD_X + (int)(12 * ROW_S), cy);
             RowTextC(gfx, v1, _pFontRowNum, _pBrWhite, ROW_CARD_X + (int)(400 * ROW_S), cy);
             RowTextC(gfx, v2, _pFontRowNum, _pBrWhite, ROW_CARD_X + (int)(536 * ROW_S), cy);
 

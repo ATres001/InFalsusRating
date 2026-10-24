@@ -1,19 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.Json;
-using System.Threading;
 using BepInEx;
-using BepInEx.Unity.IL2CPP;
-using BepInEx.Logging;
-using HarmonyLib;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
-using ifapp.Game.Data;
 
 namespace InFalsusRating;
 
@@ -211,7 +198,7 @@ public static class B30CardExporter
 
     static IntPtr _fontRank      = IntPtr.Zero;
     static IntPtr _fontRankSmall = IntPtr.Zero;
-    static IntPtr _fontDiff      = IntPtr.Zero;
+    private static Dictionary<float, IntPtr> _fontJacketConstDictionary = new();
     static IntPtr _fontScore  = IntPtr.Zero;
     static IntPtr _fontDive   = IntPtr.Zero;
     static IntPtr _fontExact  = IntPtr.Zero;
@@ -234,7 +221,8 @@ public static class B30CardExporter
     static IntPtr _brPcInk    = IntPtr.Zero;
     static IntPtr _brPcVal    = IntPtr.Zero;
     static IntPtr _brPcOff    = IntPtr.Zero;
-
+    
+    static Dictionary<float, IntPtr> _fontNoJacketConstDictionary = new();
     static IntPtr _fontB10Rank  = IntPtr.Zero;
     static IntPtr _fontB10Title = IntPtr.Zero;
     static IntPtr _fontB10Count = IntPtr.Zero;
@@ -393,9 +381,11 @@ public static class B30CardExporter
 
         if (_furoreFamily == IntPtr.Zero || _segoeFamily == IntPtr.Zero) return false;
 
+        float constSize = ConstTable.TextSizeScale();
+
         GdipCreateFont(_furoreFamily, SlotRank.Size,   FontStyleBold,    UnitPixel, out _fontRank);
         GdipCreateFont(_furoreFamily, RANK_SMALL_SIZE, FontStyleBold,    UnitPixel, out _fontRankSmall);
-        GdipCreateFont(_furoreFamily, SlotDiff.Size,   FontStyleBold,    UnitPixel, out _fontDiff);
+        _fontJacketConstDictionary[constSize] = RegisterJacketConstFont(constSize);
         GdipCreateFont(_furoreFamily, SlotScore.Size,  FontStyleBold,    UnitPixel, out _fontScore);
         GdipCreateFont(_furoreFamily, SlotDive.Size,   FontStyleBold,    UnitPixel, out _fontDive);
         GdipCreateFont(_furoreFamily, SlotExact.Size,  FontStyleBold,    UnitPixel, out _fontExact);
@@ -404,7 +394,9 @@ public static class B30CardExporter
 
         GdipCreateFont(_furoreFamily, SlotTitle.Size,    FontStyleBold, UnitPixel, out _fontTitleFurore);
         GdipCreateFont(_furoreFamily, SlotB10Title.Size, FontStyleBold, UnitPixel, out _fontB10TitleFurore);
-
+        
+        _fontNoJacketConstDictionary[constSize] = RegisterNoJacketConstFont(constSize);
+        GdipCreateFont(_furoreFamily, SlotB10Rank.Size,  FontStyleBold, UnitPixel, out _fontB10Rank);
         GdipCreateFont(_furoreFamily, SlotB10Rank.Size,  FontStyleBold, UnitPixel, out _fontB10Rank);
         GdipCreateFont(_segoeFamily,  SlotB10Title.Size, FontStyleBold, UnitPixel, out _fontB10Title);
         GdipCreateFont(_furoreFamily, SlotB10Count.Size, FontStyleBold, UnitPixel, out _fontB10Count);
@@ -435,6 +427,18 @@ public static class B30CardExporter
         InitCardFonts();
 
         return true;
+    }
+
+    private static IntPtr RegisterNoJacketConstFont(float scale)
+    {
+        GdipCreateFont(_furoreFamily, scale * SlotB10Rank.Size, FontStyleBold, UnitPixel, out var tmp);
+        return tmp;
+    }
+    
+    private static IntPtr RegisterJacketConstFont(float scale)
+    {
+        GdipCreateFont(_furoreFamily, scale * SlotDiff.Size, FontStyleBold, UnitPixel, out var tmp);
+        return tmp;
     }
 
         static void InitCardFonts()
@@ -505,9 +509,20 @@ public static class B30CardExporter
 
     static void FreeFonts()
     {
+        KeyValuePair<float, IntPtr>[] pairs = _fontNoJacketConstDictionary.ToArray();
+        foreach (KeyValuePair<float, IntPtr> pair in pairs)
+        {
+            if (pair.Value != IntPtr.Zero) GdipDeleteFont(pair.Value);
+            _fontNoJacketConstDictionary.Remove(pair.Key);
+        }
         if (_fontRank      != IntPtr.Zero) GdipDeleteFont(_fontRank);
         if (_fontRankSmall != IntPtr.Zero) GdipDeleteFont(_fontRankSmall);
-        if (_fontDiff   != IntPtr.Zero) GdipDeleteFont(_fontDiff);
+        pairs = _fontJacketConstDictionary.ToArray();
+        foreach (KeyValuePair<float, IntPtr> pair in pairs)
+        {
+            if (pair.Value != IntPtr.Zero) GdipDeleteFont(pair.Value);
+            _fontJacketConstDictionary.Remove(pair.Key);
+        }
         if (_fontScore  != IntPtr.Zero) GdipDeleteFont(_fontScore);
         if (_fontDive   != IntPtr.Zero) GdipDeleteFont(_fontDive);
         if (_fontExact  != IntPtr.Zero) GdipDeleteFont(_fontExact);
@@ -886,7 +901,12 @@ public static class B30CardExporter
 
         DrawSlot(g, _fontB10Rank, SlotNJRank, $"#{rank}", 0, rowY);
 
-        DrawSlot(g, _fontB10Rank,  SlotB10Rank,  ConstTable.Text(c.Constant), NJ_CARD_X, rowY + B10_CARD_OFFY, diffColor);
+        float constSize = ConstTable.TextSizeScale();
+        if (!_fontNoJacketConstDictionary.TryGetValue(constSize, out var fontDiff))
+        {
+            _fontNoJacketConstDictionary[constSize] = fontDiff = RegisterJacketConstFont(constSize);
+        }
+        DrawSlot(g, fontDiff,  SlotB10Rank,  ConstTable.Text(c.Constant), NJ_CARD_X, rowY + B10_CARD_OFFY, diffColor);
         DrawSlot(g, _fontB10Count, SlotB10Count, Plugin.RatingText(c.Rating),    NJ_CARD_X, rowY + B10_CARD_OFFY);
         DrawSlot(g, _fontB10Rate,  SlotB10Rate,  c.ExactRate.ToString("F0"), NJ_CARD_X, rowY + B10_CARD_OFFY);
 
@@ -1008,6 +1028,7 @@ public static class B30CardExporter
 
         string artist    = SongInfoCache.GetArtist(c.SongId);
         string diffText  = $"{DifficultyAbbr(c.Difficulty)} {ConstTable.Text(c.Constant)}";
+        Plugin.Logger.LogInfo($"[B30Card] {diffText}");
         string scoreText = c.Score.ToString("N0").Replace(",", "'");
         string diveText  = c.PaceValue >= 0 ? $"+{c.PaceValue}" : c.PaceValue.ToString();
 
@@ -1019,9 +1040,14 @@ public static class B30CardExporter
             ? GetFitFont(_furoreFamily, FontStyleBold, SlotTitle.Size, titleText, TITLE_MAX_CHARS, _fontTitleFurore)
             : GetFitFont(_segoeFamily,  FontStyleBold, SlotTitle.Size, titleText, TITLE_MAX_CHARS, _fontTitle);
         IntPtr artistFont = GetFitFont(_segoeFamily, FontStyleRegular, SlotArtist.Size, artist,    ARTIST_MAX_CHARS, _fontArtist);
-
+        float constSize = ConstTable.TextSizeScale();
+        if (!_fontJacketConstDictionary.TryGetValue(constSize, out var fontDiff))
+        {
+            _fontJacketConstDictionary[constSize] = fontDiff = RegisterJacketConstFont(constSize);
+        }
+        
         DrawSlot(g, rankFont, SlotRank, $"#{rank}", cardX, cardY);
-        DrawSlot(g, _fontDiff,   SlotDiff,   diffText,   cardX, cardY);
+        DrawSlot(g, fontDiff,   SlotDiff,   diffText,   cardX, cardY);
         DrawSlot(g, titleFont,  SlotTitle,  titleText,  cardX, cardY);
         DrawSlot(g, artistFont, SlotArtist, artist,     cardX, cardY);
         DrawSlot(g, _fontScore,  SlotScore,  scoreText,  cardX, cardY);
