@@ -104,6 +104,7 @@ public static partial class Win32Overlay
 
         static WndProcDelegate _spWndProc;
 
+        static Dictionary<float, IntPtr> constRowFontDictionary = new Dictionary<float, IntPtr>();
         static IntPtr _cjkColl = IntPtr.Zero, _fam = IntPtr.Zero;
         static IntPtr _fTitle, _fRank, _fVerdict, _fLabel, _fValue, _fHead, _fRow, _fFoot;
         static IntPtr _fmtNear, _fmtCenter, _fmtFar;
@@ -492,6 +493,8 @@ public static partial class Win32Overlay
             GdipCreateFont(fam, 17f, 0 , UnitPixel, out _fHead);
             GdipCreateFont(fam, 18f, 0 , UnitPixel, out _fRow);
             GdipCreateFont(fam, 16f, 0 , UnitPixel, out _fFoot);
+            float constSize = ConstTable.TextSizeScale();
+            constRowFontDictionary[constSize] = RegisterConstRowFont(constSize);
 
             GdipCreateStringFormat(NoWrap, 0, out _fmtNear);
             GdipSetStringFormatAlign(_fmtNear, StringAlignmentNear);
@@ -507,6 +510,12 @@ public static partial class Win32Overlay
 
             Plugin.Logger.LogInfo($"[结算] 字体就绪（中文族句柄 {(fam != IntPtr.Zero ? "有" : "无")}）");
         }
+
+        private static IntPtr RegisterConstRowFont(float scale)
+        {
+            GdipCreateFont(_fam, 18f * scale, 0 , UnitPixel, out var tmp);
+            return tmp;
+        } 
 
         static IntPtr Br(int argb)
         {
@@ -747,7 +756,12 @@ public static partial class Win32Overlay
                 string dtxt = rconst >= 0
                     ? TaskConfig.DiffShort(row.Difficulty) + " " + ConstTable.Text(rconst)
                     : TaskConfig.DiffShort(row.Difficulty);
-                Txt(gfx, dtxt, _fRow, COL_DIFF_X, ry, COL_DIFF_W, ROW_H, _fmtCenter, C_LABEL);
+                float constSize = ConstTable.TextSizeScale();
+                if (!constRowFontDictionary.TryGetValue(constSize, out var constFont))
+                {
+                    constRowFontDictionary[constSize] = constFont = RegisterConstRowFont(constSize);
+                }
+                Txt(gfx, dtxt, rconst >= 0 ? constFont : _fRow, COL_DIFF_X, ry, COL_DIFF_W, ROW_H, _fmtCenter, C_LABEL);
                 Txt(gfx, recorded ? FmtScore(row.Score) : "—", _fRow,
                     COL_SCORE_X, ry, COL_SCORE_W, ROW_H, _fmtFar, recorded ? C_VALUE : C_LABEL);
                 Txt(gfx, Fit(gfx, ClearText(row.Clear), _fRow, COL_CLEAR_W - 18), _fRow,

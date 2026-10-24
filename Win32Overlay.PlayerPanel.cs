@@ -207,6 +207,7 @@ public static partial class Win32Overlay
         static IntPtr _pFontFamily = IntPtr.Zero;
         static IntPtr _pCjkCollection = IntPtr.Zero, _pCjkFamily = IntPtr.Zero;
         static IntPtr _pFontCjkLabel = IntPtr.Zero, _pFontCjkPage = IntPtr.Zero;
+        private static Dictionary<float, IntPtr> cjkConstFontDictionary = new();
 
         static IntPtr _pFontInfoName = IntPtr.Zero, _pFontInfoTitle = IntPtr.Zero;
         static IntPtr _pFontInfoRat = IntPtr.Zero, _pFontInfoVal = IntPtr.Zero;
@@ -350,6 +351,7 @@ public static partial class Win32Overlay
 
         static IntPtr _pRowTitleFam = IntPtr.Zero, _pRowFuroreFam = IntPtr.Zero;
 
+        private static IntPtr _pCjkFamSrc = IntPtr.Zero;
         static IntPtr _pRowFamSrc = IntPtr.Zero;
 
         static int _hoverExBtn = -1;
@@ -1881,7 +1883,9 @@ public static partial class Win32Overlay
             }
 
             IntPtr cjk = CjkFamSrc();
-            if (_pFontCjkLabel == IntPtr.Zero) GdipCreateFont(cjk, 20f, 0 , UnitPixel, out _pFontCjkLabel);
+            float constSize = ConstTable.TextSizeScale();
+            cjkConstFontDictionary[constSize] = RegisterCjkFont(cjk, constSize);
+            if (_pFontCjkLabel == IntPtr.Zero) _pFontCjkLabel = RegisterCjkFont(cjk, 1);
             if (_pFontCjkPage  == IntPtr.Zero) GdipCreateFont(cjk, 28f, 0 , UnitPixel, out _pFontCjkPage);
 
             MakeNameFont();
@@ -1898,7 +1902,6 @@ public static partial class Win32Overlay
             if (_pFontRowNum == IntPtr.Zero)
             {
                 _pFontRowNum = RegisterRowFont(num, 1);
-                float constSize = ConstTable.TextSizeScale();
                 rowConstFontDictionary[constSize] = RegisterRowFont(num, constSize);
             }
 
@@ -1908,6 +1911,12 @@ public static partial class Win32Overlay
         static IntPtr RegisterRowFont(IntPtr fontFamily, float scale)
         {
             GdipCreateFont(fontFamily, 30f * ROW_S * scale, 1 , UnitPixel, out var tmp);
+            return tmp;
+        }
+
+        static IntPtr RegisterCjkFont(IntPtr fontFamily, float scale)
+        {
+            GdipCreateFont(fontFamily, 20f, 0 , UnitPixel, out var tmp);
             return tmp;
         }
 
@@ -9123,6 +9132,11 @@ public static partial class Win32Overlay
 
                 StopThumbWorker();
                 DisposeTextures();
+                foreach (KeyValuePair<float, IntPtr> pair in cjkConstFontDictionary.ToArray())
+                {
+                    if (pair.Value != IntPtr.Zero) GdipDeleteFont(pair.Value);
+                    cjkConstFontDictionary.Remove(pair.Key);
+                }
                 if (_pFontCjkLabel != IntPtr.Zero) GdipDeleteFont(_pFontCjkLabel);
                 if (_pFontCjkPage  != IntPtr.Zero) GdipDeleteFont(_pFontCjkPage);
                 _pFontCjkLabel = _pFontCjkPage = IntPtr.Zero;
@@ -9332,7 +9346,12 @@ public static partial class Win32Overlay
 
             string name = SongInfoCache.GetName(e.SongId.ToString(CultureInfo.InvariantCulture));
             RowTextL(gfx, ClipTitleLine(name, REC_W - 130), _pFontCjkLabel, br1, REC_X + 20, y + 28);
-            RowTextR(gfx, $"{TaskConfig.DiffShort(e.Diff)} {ConstTable.Text(e.Const)}", _pFontCjkLabel, Brush(dc),
+            float constSize = ConstTable.TextSizeScale();
+            if (!cjkConstFontDictionary.TryGetValue(constSize, out var _pFontConst))
+            {
+                cjkConstFontDictionary[constSize] = _pFontConst = RegisterCjkFont(CjkFamSrc(), constSize);
+            }
+            RowTextR(gfx, $"{TaskConfig.DiffShort(e.Diff)} {ConstTable.Text(e.Const)}", _pFontConst, Brush(dc),
                 REC_X + REC_W - 16, y + 28);
 
             RowTextL(gfx, Recommend.KindName(e.Kind), _pFontCjkLabel,
