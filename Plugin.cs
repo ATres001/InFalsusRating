@@ -110,6 +110,7 @@ public class Plugin : BasePlugin
         harmony.PatchAll(typeof(Patch_NH_VNA));
         harmony.PatchAll(typeof(Patch_UIManagerUpdate));
         harmony.PatchAll(typeof(Patch_GameSceneExit));
+        harmony.PatchAll(typeof(Patch_PauseQuit));
 
         if (Patch_GameSceneExit.TargetMethod() == null)
             Logger.LogError("[Exam] 挂不上 GameScene._Sk —— 玩家自己退出/重开**不会**被判失败");

@@ -876,7 +876,7 @@ public static partial class GameProbe
         Flush();
     }
 
-    static void DnHoldStop(string why)
+    static void DnHoldStop(string why, bool preferPrev = false)
     {
         if (_dnHold == null) return;
         _dnHold = null;
@@ -889,10 +889,14 @@ public static partial class GameProbe
 
         if (_dnHoldRec == null || _dnHoldRec.Restore)
         {
-            object back = _dnHoldShell != null ? _dnHoldShell : _dnHoldPrev;
-            string src = _dnHoldShell != null
-                ? "保压期间**游戏自己写的那份**"
-                : (_dnHoldPrev != null ? "喂之前坐着的那份（兜底）" : null);
+            object back = preferPrev && _dnHoldPrev != null
+                ? _dnHoldPrev
+                : (_dnHoldShell != null ? _dnHoldShell : _dnHoldPrev);
+            string src = preferPrev && _dnHoldPrev != null
+                ? "喂之前坐着的那份（退出回选曲）"
+                : (_dnHoldShell != null
+                    ? "保压期间**游戏自己写的那份**"
+                    : (_dnHoldPrev != null ? "喂之前坐着的那份（兜底）" : null));
             if (back == null)
                 W(tg3 + "：还原 ⚠ **没得还**（既没抓到游戏自己写的那份，喂之前那格也是 <null>）"
                       + " —— `_dN` 留着我们的故事信封（⚠ 下一首开谱前会被顶掉，但这一局剩下的时间里它是我们的）");
@@ -971,6 +975,12 @@ public static partial class GameProbe
     {
         if (_dnHold == null) return;
         DnHoldStop("玩家退出/重开 GameScene");
+    }
+
+    public static void RestoreStoryEnvelopeToPrevNow()
+    {
+        if (_dnHold == null) return;
+        DnHoldStop("玩家退出（回选曲）", preferPrev: true);
     }
 
     public static void CleanupExamEncounter()

@@ -228,6 +228,19 @@ public static class TaskRunner
         }
     }
 
+    public static void NotePauseQuit()
+    {
+        if (!Busy) return;
+        if (_st != St.Playing && _st != St.Collect) return;
+        if (_playerQuit) return;
+
+        GameProbe.CleanupExamEncounter();
+        _playerQuit = true;
+        _playerQuitWhy = $"第 {_idx + 1} 首《{_curTitle}》玩家在暂停界面退出";
+        Plugin.Logger.LogWarning($"[Exam] {_playerQuitWhy}（当前 dive {_lastDive}，{ExamHp.Status()}）"
+            + " → 这一首判失败，这一场到此为止");
+    }
+
         static void NotePlayerEscape(bool restart)
     {
         GameProbe.CleanupExamEncounter();
@@ -885,6 +898,16 @@ public static class TaskRunner
             row.Clear  = -1;
             row.Failed = _aborted || _playerQuit;
 
+            if (!row.Failed && _n0 >= 0 && _entered
+                && SceneProbe.Results == null && SceneProbe.Scene == null)
+            {
+                _playerQuit = true;
+                _playerQuitWhy = $"第 {_idx + 1} 首《{_curTitle}》玩家退出了谱面"
+                    + "（没回到选歌/结算，多半是暂停界面退出）";
+                row.Failed = true;
+                Plugin.Logger.LogWarning($"[Exam] {_playerQuitWhy} → 这一首判失败，这一场到此为止");
+            }
+
             long sb = ExamHp.SongBreak, sn = ExamHp.SongNear, sp = ExamHp.SongExact, ss2 = ExamHp.SongShiny;
             if (JudgeProbe.Live || sb + sn + sp + ss2 > 0)
             {
@@ -896,7 +919,7 @@ public static class TaskRunner
                 + (row.LiveStats
                     ? $"、判定 EXACT+ {row.Shiny}/EXACT {row.Perfect}/NEAR {row.Near}/BREAK {row.Miss}、最大连击 {row.Combo}"
                     : "（实时判定这条路这次没接上，判定明细没有）")
-                + (_aborted ? "" : "；没中断，这一首按未记录处理"));
+                + (_aborted || _playerQuit ? "" : "；没中断，这一首按未记录处理"));
         }
 
         if (row.Failed && _n0 >= 0 && n1 <= _n0 && _curId != null)
