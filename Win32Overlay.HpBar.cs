@@ -409,7 +409,7 @@ public static partial class Win32Overlay
         {
             if (_fontNum == IntPtr.Zero || _fmtNum == IntPtr.Zero || _brNum == IntPtr.Zero) return;
             if (_shownHp == float.MinValue) return;
-            string s = ((int)MathF.Round(_shownHp)).ToString();
+            string s = ((int)MathF.Round(_shownHp)).ToString() + " " + ExamHp.RegenTierNow;
 
             const int anchor = FILL_X0 + FILL_W / 2;
 

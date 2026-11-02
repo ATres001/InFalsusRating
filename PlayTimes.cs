@@ -10,27 +10,26 @@ namespace InFalsusRating;
 
 public static class PlayTimes
 {
-        public static string JsonPath => Path.Combine(
-        BepInEx.Paths.ConfigPath, "InFalsusRating", "playtimes.json");
+    public static string JsonPath => Path.Combine(Settings.ConfigRoot, "playtimes.json");
 
-        const int SaveMinMs = 1500;
+    const int SaveMinMs = 1500;
 
     static readonly object _lock = new object();
 
-        static ulong[] _stamps = Array.Empty<ulong>();
+    static ulong[] _stamps = Array.Empty<ulong>();
 
-        static Dictionary<string, ulong> _bySig = new Dictionary<string, ulong>(StringComparer.Ordinal);
+    static Dictionary<string, ulong> _bySig = new Dictionary<string, ulong>(StringComparer.Ordinal);
 
-        static int _seen;
+    static int _seen;
 
-        static bool _inited;
+    static bool _inited;
 
     static bool _dirty;
     static int _lastSaveTick = unchecked(Environment.TickCount - SaveMinMs);
 
-        static readonly StringBuilder _sb = new StringBuilder(64);
+    static readonly StringBuilder _sb = new StringBuilder(64);
 
-        public static ulong StampAt(int index, in GameResultV4 r)
+    public static ulong StampAt(int index, in GameResultV4 r)
     {
         ulong s = r.SecondsSinceEpochUtc;
         if (s != 0) return s;
@@ -38,10 +37,11 @@ public static class PlayTimes
         {
             if (index >= 0 && index < _stamps.Length) return _stamps[index];
         }
+
         return 0;
     }
 
-        public static ulong StampFor(in GameResultV4 r)
+    public static ulong StampFor(in GameResultV4 r)
     {
         ulong s = r.SecondsSinceEpochUtc;
         if (s != 0) return s;
@@ -59,7 +59,7 @@ public static class PlayTimes
         }
     }
 
-        public static void Observe(List<GameResultV4> all)
+    public static void Observe(List<GameResultV4> all)
     {
         if (all == null) return;
 
@@ -70,12 +70,10 @@ public static class PlayTimes
         {
             lock (_lock)
             {
-
                 if (_inited && n == _seen) return;
 
                 if (!_inited || n < _seen)
                 {
-
                     var arr = new ulong[n];
                     for (int i = 0; i < n; i++) arr[i] = all[i].SecondsSinceEpochUtc;
                     _stamps = arr;
@@ -91,7 +89,6 @@ public static class PlayTimes
                 }
                 else if (_stamps.Length == 0 && n > 4)
                 {
-
                     var arr = new ulong[n];
                     for (int i = 0; i < n; i++) arr[i] = all[i].SecondsSinceEpochUtc;
                     _stamps = arr;
@@ -104,7 +101,6 @@ public static class PlayTimes
                 }
                 else
                 {
-
                     ulong now = unchecked((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
                     int old = _stamps.Length;
                     Array.Resize(ref _stamps, n);
@@ -112,9 +108,15 @@ public static class PlayTimes
                     for (int i = _seen; i < n; i++)
                     {
                         ulong s = all[i].SecondsSinceEpochUtc;
-                        if (s == 0) { s = now; stamped++; }
+                        if (s == 0)
+                        {
+                            s = now;
+                            stamped++;
+                        }
+
                         _stamps[i] = s;
                     }
+
                     _seen = n;
                     RebuildSigMap(all);
                     _dirty = true;
@@ -128,7 +130,6 @@ public static class PlayTimes
         }
         catch (Exception ex)
         {
-
             Plugin.Logger.LogWarning($"[游玩时间] 记账失败（这一次跳过）: {ex.Message}");
             return;
         }
@@ -136,7 +137,7 @@ public static class PlayTimes
         if (changed) Save(force: true);
     }
 
-        public static void Save(bool force = false)
+    public static void Save(bool force = false)
     {
         lock (_lock)
         {
@@ -147,7 +148,8 @@ public static class PlayTimes
             {
                 var sb = new StringBuilder(256 + _stamps.Length * 12);
                 sb.AppendLine("{");
-                sb.AppendLine("  \"_字段\": \"stamps[i] = history 第 i 条（0 = 最老）第一次被插件看到时的时间，Unix 秒 UTC；0 = 不知道（这个功能上线前打的老记录，画空）。init = 账本是否已经对齐过一次。删掉整个文件 = 下次启动重新对齐（老记录仍然没有时间，之后新打的照常记）。\",");
+                sb.AppendLine(
+                    "  \"_字段\": \"stamps[i] = history 第 i 条（0 = 最老）第一次被插件看到时的时间，Unix 秒 UTC；0 = 不知道（这个功能上线前打的老记录，画空）。init = 账本是否已经对齐过一次。删掉整个文件 = 下次启动重新对齐（老记录仍然没有时间，之后新打的照常记）。\",");
                 sb.AppendLine("  \"v\": 1,");
                 sb.AppendLine($"  \"init\": {(_inited ? "true" : "false")},");
                 sb.AppendLine($"  \"seen\": {_seen},");
@@ -157,6 +159,7 @@ public static class PlayTimes
                     if (i > 0) sb.Append(',');
                     sb.Append(_stamps[i]);
                 }
+
                 sb.AppendLine("]");
                 sb.AppendLine("}");
 
@@ -172,7 +175,12 @@ public static class PlayTimes
         }
     }
 
-        public static void Load()
+    public static void Init()
+    {
+        ExternalSaveManager.RegisterFile(JsonPath, Load);
+    }
+
+    public static void Load()
     {
         try
         {
@@ -202,7 +210,6 @@ public static class PlayTimes
 
             if (!root.TryGetProperty("stamps", out var st) || st.ValueKind != JsonValueKind.Array)
             {
-
                 Plugin.Logger.LogWarning("[游玩时间] playtimes.json 缺 stamps 数组 —— 当作没有，下次重新对齐");
                 return;
             }
@@ -219,13 +226,15 @@ public static class PlayTimes
             _inited = inited;
 
             int known = 0;
-            for (int i = 0; i < _stamps.Length; i++) if (_stamps[i] != 0) known++;
+            for (int i = 0; i < _stamps.Length; i++)
+                if (_stamps[i] != 0)
+                    known++;
             Plugin.Logger.LogInfo(
                 $"[游玩时间] playtimes.json: {_seen} 条（有时间的 {known} 条）");
         }
     }
 
-        static void RebuildSigMap(List<GameResultV4> all)
+    static void RebuildSigMap(List<GameResultV4> all)
     {
         _bySig.Clear();
         int n = Math.Min(all.Count, _stamps.Length);
@@ -236,16 +245,16 @@ public static class PlayTimes
         }
     }
 
-        static string Sig(in GameResultV4 r)
+    static string Sig(in GameResultV4 r)
     {
         var sb = _sb;
         sb.Clear();
         sb.Append(r.SongId.ToString()).Append('|')
-          .Append(r.Difficulty.ToString()).Append('|')
-          .Append(r.PlayerScore).Append('|')
-          .Append(r.MaxCombo).Append('|')
-          .Append((int)r.CalculatedResultClear).Append('|')
-          .Append((int)r.CalculatedPaceValue);
+            .Append(r.Difficulty.ToString()).Append('|')
+            .Append(r.PlayerScore).Append('|')
+            .Append(r.MaxCombo).Append('|')
+            .Append((int)r.CalculatedResultClear).Append('|')
+            .Append((int)r.CalculatedPaceValue);
         return sb.ToString();
     }
 }

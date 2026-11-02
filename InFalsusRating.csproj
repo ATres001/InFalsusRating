@@ -18,8 +18,9 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <Import Project="ProjectSettings.props" />
+
   <PropertyGroup>
-    <GameDir Condition="'$(GameDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\In Falsus</GameDir>
     <BepInExCore>$(GameDir)\BepInEx\core</BepInExCore>
   </PropertyGroup>
 

@@ -34,6 +34,7 @@ public static class SceneTracker
         "ifapp.Game.Scenes.ResultsScene",
         "ifapp.Game.Scenes.PackSelectScene",
         "ifapp.Game.Scenes.StoryScene",
+        "ifapp.Game.Scenes.StorySongTransitionScene",
         "ifapp.Game.Scenes.TimelineScene",
         "ifapp.Game.Scenes.CreditsScene",
         "ifapp.Game.Scenes.GameScene",
@@ -142,6 +143,24 @@ public static class SceneTracker
                             Plugin.Logger.LogInfo("[Scene] ResultsScene.Start 钩子已挂（拿结算界面实例）");
                         }
                         else Plugin.Logger.LogWarning("[Scene] ResultsScene 上没有 Start —— 拿不到结算界面实例，考试期间得自己点「退出」");
+
+                        var quit = t.GetMethod("_bM", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (quit != null)
+                        {
+                            harmony.Patch(quit, prefix: new HarmonyMethod(
+                                typeof(SceneHooks).GetMethod("OnResultsQuit", BindingFlags.Static | BindingFlags.Public)));
+                            Plugin.Logger.LogInfo("[Scene] ResultsScene._bM 钩子已挂（退出前清 Encounter 信封）");
+                        }
+                        else Plugin.Logger.LogWarning("[Scene] ResultsScene 上没有 _bM —— 退出可能仍会走故事");
+
+                        var retry = t.GetMethod("_wo", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (retry != null)
+                        {
+                            harmony.Patch(retry, prefix: new HarmonyMethod(
+                                typeof(SceneHooks).GetMethod("OnResultsRetry", BindingFlags.Static | BindingFlags.Public)));
+                            Plugin.Logger.LogInfo("[Scene] ResultsScene._wo 钩子已挂（结算重开 → 中止课题）");
+                        }
+                        else Plugin.Logger.LogWarning("[Scene] ResultsScene 上没有 _wo —— 结算重开不会中止课题");
                     }
 
                     if (className == "ifapp.Game.Scenes.SongSelectScene")

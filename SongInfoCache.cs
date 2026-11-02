@@ -49,7 +49,7 @@ public static class SongInfoCache
         return new List<int>(set);
     }
 
-    static string CatalogPath => Path.Combine(Paths.ConfigPath, "InFalsusRating", "catalog.json");
+    static string CatalogPath => Path.Combine(Settings.ConfigRoot, "catalog.json");
 
     public static void LoadCatalog()
     {

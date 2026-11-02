@@ -9,40 +9,53 @@ namespace InFalsusRating;
 
 public static class PlayerSkin
 {
-        public static string JsonPath => Path.Combine(
-        BepInEx.Paths.ConfigPath, "InFalsusRating", "player.json");
+    public static string JsonPath => Path.Combine(Settings.ConfigRoot, "player.json");
 
-        public static string Avatar = "";
+    public static string Avatar = "";
 
-        public static string Card = "";
+    public static string Card = "";
 
-        public static double CardCx = 0.5;
-        public static double CardCy = 0.5;
-        public static double CardZoom = 1.0;
+    public static double CardCx = 0.5;
+    public static double CardCy = 0.5;
+    public static double CardZoom = 1.0;
 
-        public static double CardBlur = 8;
+    public static double CardBlur = 8;
 
-        public const double BlurMin = 1.0, BlurMax = 16.0;
+    public const double BlurMin = 1.0, BlurMax = 16.0;
 
-        public static string Char = "";
+    public static string Char = "";
 
-        public const string RandomKey = "*";
+    public const string RandomKey = "*";
 
-        public static string Bg = "";
+    public static string Bg = "";
 
-        public static double BgBright = 0.45;
+    public static double BgBright = 0.45;
 
-        public static int Version = 0;
+    public static int Version = 0;
 
-        public static void Bump() => Version++;
+    public static void Bump() => Version++;
 
-        static readonly object _saveLock = new object();
+    static readonly object _saveLock = new object();
 
-        public static void Load()
+    public static void Init()
+    {
+        ExternalSaveManager.RegisterFile(JsonPath, Load);
+    }
+
+    public static void Load()
     {
         try
         {
-            if (File.Exists(JsonPath)) ParseInto(File.ReadAllText(JsonPath));
+            if (File.Exists(JsonPath))
+            {
+                string text;
+                lock (_saveLock)
+                {
+                    text = File.ReadAllText(JsonPath);
+                }
+
+                ParseInto(text);
+            }
         }
         catch (Exception ex)
         {
@@ -67,14 +80,15 @@ public static class PlayerSkin
         BgBright = Dbl(root, "bgBright", BgBright, 0.0, 1.0);
     }
 
-        public static bool Save()
+    public static bool Save()
     {
         try
         {
             var sb = new StringBuilder();
             sb.AppendLine("{");
 
-            sb.AppendLine("  \"_字段\": \"F6 面板「玩家编辑」抽屉写出来的。名字是 jacket 或 jacket/scene 里的图片文件名（不含扩展名），空串 = 用默认。cardCx/cardCy 是裁剪中心（0~1）、cardZoom 是放大倍数（1~8）、cardBlur 是名片背景的模糊档（1~16，越大越糊，1 = 不糊）。bg 空串 = 背景每次随机抽；char 是 GUI/playerinfo/char 里的角色立绘，空串 = 不显示、\\\"*\\\" = 每次进页面随机抽。\",");
+            sb.AppendLine(
+                "  \"_字段\": \"F6 面板「玩家编辑」抽屉写出来的。名字是 jacket 或 jacket/scene 里的图片文件名（不含扩展名），空串 = 用默认。cardCx/cardCy 是裁剪中心（0~1）、cardZoom 是放大倍数（1~8）、cardBlur 是名片背景的模糊档（1~16，越大越糊，1 = 不糊）。bg 空串 = 背景每次随机抽；char 是 GUI/playerinfo/char 里的角色立绘，空串 = 不显示、\\\"*\\\" = 每次进页面随机抽。\",");
             sb.AppendLine("  \"v\": 1,");
             sb.AppendLine($"  \"avatar\": {Q(Avatar)},");
             sb.AppendLine($"  \"card\": {Q(Card)},");
@@ -94,6 +108,7 @@ public static class PlayerSkin
                 Directory.CreateDirectory(Path.GetDirectoryName(JsonPath));
                 File.WriteAllText(JsonPath, text, new UTF8Encoding(false));
             }
+
             return true;
         }
         catch (Exception ex)
@@ -113,7 +128,7 @@ public static class PlayerSkin
         return d < min ? min : (d > max ? max : d);
     }
 
-        static string Clean(string name)
+    static string Clean(string name)
     {
         if (string.IsNullOrEmpty(name)) return "";
         if (name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0 || name.IndexOf(':') >= 0) return "";

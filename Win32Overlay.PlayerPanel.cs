@@ -4031,7 +4031,7 @@ public static partial class Win32Overlay
                 case 7: return ParticlesOn ? 0 : 1;
                 case 8: return Settings.BottomLayerOn ? 0 : 1;
 
-                case 9: return string.IsNullOrEmpty(Settings.ExportDir) ? 0 : -1;
+                case 9: return string.IsNullOrEmpty(Settings.CustomExportDir) ? 0 : -1;
                 case 10: return -1;
                 case 11: return Settings.ToastOn ? 0 : 1;
                 case 12: return NearestChip(SET_TOAST_VALS, Settings.ToastHoldMs);
@@ -4082,7 +4082,7 @@ public static partial class Win32Overlay
                     break;
                 case 9:
 
-                    if (c == 0) Settings.ExportDir = "";
+                    if (c == 0) Settings.CustomExportDir = "";
                     else PostSetAct(c == 1 ? SETACT_PICK_EXPORT : SETACT_OPEN_EXPORT);
                     break;
                 case 10:
@@ -4155,7 +4155,7 @@ public static partial class Win32Overlay
                 else if (act >= SETACT_IMP_AVATAR && act <= SETACT_IMP_BG)
                 {
 
-                    string cfg = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+                    string cfg = Settings.ConfigRoot;
                     string folder = act == SETACT_IMP_BG
                         ? Path.Combine(cfg, "jacket", "scene")
                         : Path.Combine(cfg, "jacket");
@@ -4187,7 +4187,7 @@ public static partial class Win32Overlay
             {
                 if (act == SETACT_PICK_EXPORT)
                 {
-                    Settings.ExportDir = path;
+                    Settings.CustomExportDir = path;
                     Settings.Save();
                     Toast.Queue("导出位置已改", ClipTitleLine(path, 380), "设置");
                 }
@@ -4208,7 +4208,7 @@ public static partial class Win32Overlay
             string label = kind == 0 ? "头像" : kind == 1 ? "名片" : "背景";
             try
             {
-                string cfg = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+                string cfg = Settings.ConfigRoot;
                 string folder = kind == 2
                     ? Path.Combine(cfg, "jacket", "scene")
                     : Path.Combine(cfg, "jacket");
@@ -4318,7 +4318,7 @@ public static partial class Win32Overlay
                 const int BW = 900, BH = 60;
                 int bt = SET_NOW_Y + 22;
                 string root = Settings.ExportRoot;
-                bool dflt = string.IsNullOrEmpty(Settings.ExportDir);
+                bool dflt = string.IsNullOrEmpty(Settings.CustomExportDir);
 
                 RowTextL(gfx, "当前导出位置", _pFontCjkLabel, brHdr, x, SET_NOW_Y);
 
@@ -4895,7 +4895,7 @@ public static partial class Win32Overlay
             return -1;
         }
 
-        static string ThumbCacheDir => Path.Combine(BepInEx.Paths.ConfigPath, "InFalsusRating", "cache", "thumb");
+        static string ThumbCacheDir => Path.Combine(Settings.ConfigRoot, "cache", "thumb");
         const int THUMB_CACHE_MAX = 600;
         const int THUMB_CACHE_KEEP = 400;
 

@@ -11,28 +11,27 @@ namespace InFalsusRating;
 
 public static class PlayCounts
 {
-        public static string JsonPath => Path.Combine(
-        BepInEx.Paths.ConfigPath, "InFalsusRating", "plays.json");
+    public static string JsonPath => Path.Combine(Settings.ConfigRoot, "plays.json");
 
-        const int SaveMinMs = 1500;
+    const int SaveMinMs = 1500;
 
     static readonly object _lock = new object();
 
-        static Dictionary<string, int> _counts = new Dictionary<string, int>(StringComparer.Ordinal);
+    static Dictionary<string, int> _counts = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        static Dictionary<string, int> _bySong = new Dictionary<string, int>(StringComparer.Ordinal);
+    static Dictionary<string, int> _bySong = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        static int _seen;
+    static int _seen;
 
-        static int _highWater;
+    static int _highWater;
 
-        static int _total;
+    static int _total;
 
-        static bool _dirty;
+    static bool _dirty;
 
-        static int _lastSaveTick = unchecked(Environment.TickCount - SaveMinMs);
+    static int _lastSaveTick = unchecked(Environment.TickCount - SaveMinMs);
 
-        public static int For(string songId, string diff)
+    public static int For(string songId, string diff)
     {
         if (string.IsNullOrEmpty(songId) || string.IsNullOrEmpty(diff)) return 0;
         lock (_lock)
@@ -43,25 +42,44 @@ public static class PlayCounts
                 if (kv.Key.Length == songId.Length + 1 + diff.Length
                     && string.Compare(kv.Key, 0, songId, 0, songId.Length, StringComparison.OrdinalIgnoreCase) == 0
                     && kv.Key[songId.Length] == '|'
-                    && string.Compare(kv.Key, songId.Length + 1, diff, 0, diff.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                    && string.Compare(kv.Key, songId.Length + 1, diff, 0, diff.Length,
+                        StringComparison.OrdinalIgnoreCase) == 0)
                     return kv.Value;
             return 0;
         }
     }
 
-        public static int SongPlays(string songId)
+    public static int SongPlays(string songId)
     {
         if (string.IsNullOrEmpty(songId)) return 0;
         lock (_lock) return _bySong.TryGetValue(songId, out int n) ? n : 0;
     }
 
-        public static int TotalPlays { get { lock (_lock) return _total; } }
+    public static int TotalPlays
+    {
+        get
+        {
+            lock (_lock) return _total;
+        }
+    }
 
-        public static int TrackedCharts { get { lock (_lock) return _counts.Count; } }
+    public static int TrackedCharts
+    {
+        get
+        {
+            lock (_lock) return _counts.Count;
+        }
+    }
 
-        public static int SeenCount { get { lock (_lock) return _seen; } }
+    public static int SeenCount
+    {
+        get
+        {
+            lock (_lock) return _seen;
+        }
+    }
 
-        public static void Snapshot(out List<KeyValuePair<string, int>> counts, out int highWater)
+    public static void Snapshot(out List<KeyValuePair<string, int>> counts, out int highWater)
     {
         lock (_lock)
         {
@@ -71,7 +89,12 @@ public static class PlayCounts
         }
     }
 
-        public static void Load()
+    public static void Init()
+    {
+        ExternalSaveManager.RegisterFile(JsonPath, Load);
+    }
+
+    public static void Load()
     {
         try
         {
@@ -83,7 +106,7 @@ public static class PlayCounts
         }
     }
 
-        public static void Observe(List<GameResultV4> all)
+    public static void Observe(List<GameResultV4> all)
     {
         if (all == null) return;
 
@@ -98,7 +121,6 @@ public static class PlayCounts
 
                 if (n < _seen)
                 {
-
                     Plugin.Logger.LogWarning(
                         $"[游玩次数] history 变小了（{_seen} → {n}）—— 已重新对齐，已有的次数一个不改");
                     _seen = n;
@@ -133,7 +155,6 @@ public static class PlayCounts
         }
         catch (Exception ex)
         {
-
             Plugin.Logger.LogWarning($"[游玩次数] 入账失败（这一次跳过）: {ex.Message}");
             return;
         }
@@ -141,7 +162,7 @@ public static class PlayCounts
         if (changed) Save();
     }
 
-        public static void Save(bool force = false)
+    public static void Save(bool force = false)
     {
         lock (_lock)
         {
@@ -152,7 +173,8 @@ public static class PlayCounts
             {
                 var sb = new StringBuilder();
                 sb.AppendLine("{");
-                sb.AppendLine("  \"_字段\": \"每张谱打了多少次（游玩次数）。seen = 已经入过账的 history 条数，删掉这个键会让整个 history 重新入账（次数不变大也不变小，只是重算一遍）。highWater = 见过的 history 最大条数（只涨不落，等级首次折算兜底用）。\",");
+                sb.AppendLine(
+                    "  \"_字段\": \"每张谱打了多少次（游玩次数）。seen = 已经入过账的 history 条数，删掉这个键会让整个 history 重新入账（次数不变大也不变小，只是重算一遍）。highWater = 见过的 history 最大条数（只涨不落，等级首次折算兜底用）。\",");
                 sb.AppendLine("  \"v\": 1,");
                 sb.AppendLine($"  \"seen\": {_seen},");
                 sb.AppendLine($"  \"highWater\": {_highWater},");
@@ -200,11 +222,11 @@ public static class PlayCounts
 
             int seen = 0;
             bool seenOk = root.TryGetProperty("seen", out var sv) && sv.ValueKind == JsonValueKind.Number
-                && sv.TryGetInt32(out seen) && seen >= 0;
+                                                                  && sv.TryGetInt32(out seen) && seen >= 0;
             if (seenOk) _seen = seen;
 
             if (root.TryGetProperty("highWater", out var hv) && hv.ValueKind == JsonValueKind.Number
-                && hv.TryGetInt32(out int hw) && hw >= 0)
+                                                             && hv.TryGetInt32(out int hw) && hw >= 0)
                 _highWater = Math.Max(hw, _seen);
             else
                 _highWater = _seen;
@@ -213,7 +235,12 @@ public static class PlayCounts
 
             bool countsNonEmpty = false;
             if (countsOk)
-                foreach (var p in cs.EnumerateObject()) { countsNonEmpty = true; break; }
+                foreach (var p in cs.EnumerateObject())
+                {
+                    countsNonEmpty = true;
+                    break;
+                }
+
             bool trusted = countsOk && seenOk && !(_seen == 0 && countsNonEmpty);
             if (countsOk && !trusted)
             {
@@ -246,7 +273,7 @@ public static class PlayCounts
             $"[游玩次数] plays.json: {_total} 次 / {_counts.Count} 张谱 / 对齐到第 {_seen} 条");
     }
 
-        static string Esc(string s)
+    static string Esc(string s)
     {
         if (s.IndexOfAny(new[] { '"', '\\', '\n', '\r', '\t' }) < 0) return s;
         var sb = new StringBuilder(s.Length + 8);
@@ -262,6 +289,7 @@ public static class PlayCounts
                 default: sb.Append(c); break;
             }
         }
+
         return sb.ToString();
     }
 }

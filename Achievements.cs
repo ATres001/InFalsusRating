@@ -19,27 +19,27 @@ namespace InFalsusRating;
 
 public static class Achievements
 {
-        public sealed class Def
+    public sealed class Def
     {
         public string Id = "";
         public string Name = "";
         public string Desc = "";
-                public string Type = "";
-                public string Diff = ConstTable.AnyDiff;
-                public string Need = "";
-                public double Value = 0;
-                public string Clear = "";
-                public string Song = "";
-                public string Task = "";
-                public bool Hidden = false;
-                public string Cat = "";
-                public string MinGrade = "";
-                public int FromLevel = 1;
-                public List<Rung> Grades;
-                public bool Disabled = false;
+        public string Type = "";
+        public string Diff = ConstTable.AnyDiff;
+        public string Need = "";
+        public double Value = 0;
+        public string Clear = "";
+        public string Song = "";
+        public string Task = "";
+        public bool Hidden = false;
+        public string Cat = "";
+        public string MinGrade = "";
+        public int FromLevel = 1;
+        public List<Rung> Grades;
+        public bool Disabled = false;
     }
 
-        public sealed class Rung
+    public sealed class Rung
     {
         public string Diff = "";
         public string Need = "";
@@ -47,45 +47,45 @@ public static class Achievements
         public string Song = "";
         public string Task = "";
         public string MinGrade = "";
-                public string Desc = "";
-                public double? Value;
+        public string Desc = "";
+        public double? Value;
     }
 
-        public sealed class State
+    public sealed class State
     {
-                public string At = "";
-                public int Grade = 1;
-                public bool Unseen = false;
+        public string At = "";
+        public int Grade = 1;
+        public bool Unseen = false;
     }
 
-        public struct Progress
+    public struct Progress
     {
         public bool Ok;
         public long Now, Need;
         public string Note;
     }
 
-    public static string DefFile => Path.Combine(TaskConfig.Dir, "achievements.json");
-    public static string StateFile => Path.Combine(TaskConfig.Dir, "achievements_progress.json");
-        public static string DefExtraFile => Path.Combine(TaskConfig.Dir, "achievements_extra.json");
+    public static string DefFile => Path.Combine(Settings.ConfigRoot, "achievements.json");
+    public static string StateFile => Path.Combine(Settings.ConfigRoot, "achievements_progress.json");
+    public static string DefExtraFile => Path.Combine(Settings.ConfigRoot, "achievements_extra.json");
 
     static List<Def> _defs = new List<Def>();
     static Dictionary<string, State> _states = new Dictionary<string, State>();
 
-        static volatile int _statesRev;
+    static volatile int _statesRev;
 
-        const string TitleKey = "$title";
+    const string TitleKey = "$title";
 
-        const string TitleGradeKey = "$titleGrade";
+    const string TitleGradeKey = "$titleGrade";
 
-        static string _equipped = "";
+    static string _equipped = "";
 
-        static int _titleGradeSel;
-        static HashSet<string> _baseIds = new HashSet<string>(StringComparer.Ordinal);
+    static int _titleGradeSel;
+    static HashSet<string> _baseIds = new HashSet<string>(StringComparer.Ordinal);
     static HashSet<string> _extraIds = new HashSet<string>(StringComparer.Ordinal);
-        static HashSet<string> _genIds = new HashSet<string>(StringComparer.Ordinal);
+    static HashSet<string> _genIds = new HashSet<string>(StringComparer.Ordinal);
     static bool _loaded;
-        static bool _statesBad;
+    static bool _statesBad;
     static readonly object _lock = new object();
     static readonly HashSet<string> _warned = new HashSet<string>();
 
@@ -93,11 +93,12 @@ public static class Achievements
     {
         if (_loaded) return;
         _loaded = true;
+        ExternalSaveManager.RegisterFile(StateFile, Reload);
         LoadStates();
         LoadDefs();
     }
 
-        public static void Reload()
+    public static void Reload()
     {
         _loaded = true;
         lock (_lock) _warned.Clear();
@@ -124,13 +125,12 @@ public static class Achievements
                 text = SEED;
                 try
                 {
-                    Directory.CreateDirectory(TaskConfig.Dir);
+                    Directory.CreateDirectory(Settings.ConfigRoot);
                     System.IO.File.WriteAllText(path, SEED);
                     Plugin.Logger.LogInfo($"[Achieve] 生成默认成就定义：{path}");
                 }
                 catch (Exception ex)
                 {
-
                     Plugin.Logger.LogWarning($"[Achieve] 默认定义写不出去（{ex.Message}），本次用内存里那份");
                 }
             }
@@ -151,11 +151,10 @@ public static class Achievements
                 }
                 else if (EXTRA_SEED.Length > 0)
                 {
-
                     etext = EXTRA_SEED;
                     try
                     {
-                        Directory.CreateDirectory(TaskConfig.Dir);
+                        Directory.CreateDirectory(Settings.ConfigRoot);
                         System.IO.File.WriteAllText(epath, EXTRA_SEED);
                         Plugin.Logger.LogInfo($"[Achieve] 生成默认成就批次（extra）：{epath}");
                     }
@@ -172,7 +171,6 @@ public static class Achievements
                     int over = 0;
                     foreach (var d in exList)
                     {
-
                         int at = list.FindIndex(x => string.Equals(x.Id, d.Id, StringComparison.Ordinal));
                         if (at >= 0)
                         {
@@ -182,21 +180,26 @@ public static class Achievements
                         }
                         else list.Add(d);
                     }
+
                     if (exList.Count > 0)
                         Plugin.Logger.LogInfo($"[Achieve] extra 成就 {exList.Count} 条（其中覆盖基础定义 {over} 条）");
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Logger.LogWarning($"[Achieve] achievements_extra.json 读取失败: {ex.Message}（按空处理，不影响 achievements.json）");
+                Plugin.Logger.LogWarning(
+                    $"[Achieve] achievements_extra.json 读取失败: {ex.Message}（按空处理，不影响 achievements.json）");
             }
 
             int off = list.RemoveAll(x => x.Disabled);
             if (off > 0)
                 Plugin.Logger.LogInfo($"[Achieve] 停用（disabled）{off} 条，已从定义表里移除");
 
-            int unl = 0; var st0 = _states;
-            foreach (var d in list) if (st0.ContainsKey(d.Id)) unl++;
+            int unl = 0;
+            var st0 = _states;
+            foreach (var d in list)
+                if (st0.ContainsKey(d.Id))
+                    unl++;
             Plugin.Logger.LogInfo($"[Achieve] 成就定义 {list.Count} 条，已解锁 {unl} 个");
         }
         catch (Exception ex)
@@ -215,7 +218,7 @@ public static class Achievements
         }
     }
 
-        static void BuildSongDefs(List<Def> list, HashSet<string> genIds)
+    static void BuildSongDefs(List<Def> list, HashSet<string> genIds)
     {
         const string SONG_CAT = "曲目";
         const string FBD_DIFF = "Forbidden";
@@ -223,7 +226,6 @@ public static class Achievements
         List<int> ids = SongInfoCache.SelectableIds();
         if (ids == null || ids.Count == 0)
         {
-
             Plugin.Logger.LogWarning("[Achieve] 曲单是空的 —— 这次没有生成曲目成就（catalog 载入后重读即可）");
             return;
         }
@@ -244,7 +246,7 @@ public static class Achievements
 
             var d = new Def
             {
-                Id   = id,
+                Id = id,
                 Name = name,
 
                 Desc = "任意难度达成 FullLink",
@@ -252,17 +254,26 @@ public static class Achievements
                 Diff = ConstTable.AnyDiff,
                 Clear = "fullink",
                 Song = song,
-                Cat  = SONG_CAT,
+                Cat = SONG_CAT,
             };
 
             d.Grades = new List<Rung>
             {
-                new Rung { Diff = FBD_DIFF,
-                           Desc = "Forbidden 难度达成 FullLink" },
-                new Rung { Clear = "perfectdive",
-                           Desc = "任意难度达成 PerfectDive" },
-                new Rung { Diff = FBD_DIFF, Clear = "perfectdive",
-                           Desc = "Forbidden 难度达成 PerfectDive" },
+                new Rung
+                {
+                    Diff = FBD_DIFF,
+                    Desc = "Forbidden 难度达成 FullLink"
+                },
+                new Rung
+                {
+                    Clear = "perfectdive",
+                    Desc = "任意难度达成 PerfectDive"
+                },
+                new Rung
+                {
+                    Diff = FBD_DIFF, Clear = "perfectdive",
+                    Desc = "Forbidden 难度达成 PerfectDive"
+                },
             };
             list.Add(d);
             genIds.Add(id);
@@ -270,10 +281,10 @@ public static class Achievements
         }
 
         Plugin.Logger.LogInfo($"[Achieve] 曲目成就生成 {made} 条（曲单 {ids.Count} 首"
-            + (clash > 0 ? $"，{clash} 条与已有定义同 id 已跳过" : "") + "）");
+                              + (clash > 0 ? $"，{clash} 条与已有定义同 id 已跳过" : "") + "）");
     }
 
-        static void BuildTaskDefs(List<Def> list, HashSet<string> genIds)
+    static void BuildTaskDefs(List<Def> list, HashSet<string> genIds)
     {
         const string TASK_CAT = "课题";
         const string FBD_DIFF = "Forbidden";
@@ -283,7 +294,6 @@ public static class Achievements
         if (TaskConfig.Themes != null) all.AddRange(TaskConfig.Themes);
         if (all.Count == 0)
         {
-
             Plugin.Logger.LogWarning("[Achieve] 课题表是空的 —— 这次没有生成课题成就（tasks 载入后重读即可）");
             return;
         }
@@ -294,8 +304,8 @@ public static class Achievements
             if (c == null || string.IsNullOrEmpty(c.Key)) continue;
 
             if (list.Exists(x => x.Type == "task" &&
-                    (string.Equals(x.Task, c.Key, StringComparison.OrdinalIgnoreCase)
-                     || (c.Final && string.Equals(x.Task, "final", StringComparison.OrdinalIgnoreCase)))))
+                                 (string.Equals(x.Task, c.Key, StringComparison.OrdinalIgnoreCase)
+                                  || (c.Final && string.Equals(x.Task, "final", StringComparison.OrdinalIgnoreCase)))))
             {
                 covered++;
                 continue;
@@ -317,25 +327,36 @@ public static class Achievements
 
             var d = new Def
             {
-                Id   = id,
+                Id = id,
                 Name = name,
 
                 Desc = "通关课题「" + name + "」",
                 Type = "task",
                 Task = c.Key,
-                Cat  = TASK_CAT,
+                Cat = TASK_CAT,
             };
 
             d.Grades = new List<Rung>
             {
-                new Rung { Task = fbdTask,
-                           Desc = (pool || !hasFbd) ? "通关该课题（该课题没有单独的 Forbidden 版）"
-                                                    : "在 Forbidden 难度通关" },
-                new Rung { MinGrade = "S",
-                           Desc = "任意难度达成 FullLink（整套全部全连）" },
-                new Rung { Task = fbdTask, MinGrade = "S+",
-                           Desc = (pool || !hasFbd) ? "达成 PerfectDive（整套全部全完美）"
-                                                    : "在 Forbidden 难度达成 PerfectDive" },
+                new Rung
+                {
+                    Task = fbdTask,
+                    Desc = (pool || !hasFbd)
+                        ? "通关该课题（该课题没有单独的 Forbidden 版）"
+                        : "在 Forbidden 难度通关"
+                },
+                new Rung
+                {
+                    MinGrade = "S",
+                    Desc = "任意难度达成 FullLink（整套全部全连）"
+                },
+                new Rung
+                {
+                    Task = fbdTask, MinGrade = "S+",
+                    Desc = (pool || !hasFbd)
+                        ? "达成 PerfectDive（整套全部全完美）"
+                        : "在 Forbidden 难度达成 PerfectDive"
+                },
             };
             list.Add(d);
             genIds.Add(id);
@@ -343,12 +364,12 @@ public static class Achievements
         }
 
         Plugin.Logger.LogInfo($"[Achieve] 课题成就生成 {made} 条（段位 {TaskConfig.Tiers?.Count ?? 0} + "
-            + $"主题 {TaskConfig.Themes?.Count ?? 0}"
-            + (covered > 0 ? $"，{covered} 条已有手写成就（不重复生成）" : "")
-            + (clash > 0 ? $"，{clash} 条与已有定义同 id 已跳过" : "") + "）");
+                              + $"主题 {TaskConfig.Themes?.Count ?? 0}"
+                              + (covered > 0 ? $"，{covered} 条已有手写成就（不重复生成）" : "")
+                              + (clash > 0 ? $"，{clash} 条与已有定义同 id 已跳过" : "") + "）");
     }
 
-        static void ParseInto(List<Def> list, HashSet<string> ids, string text, string label)
+    static void ParseInto(List<Def> list, HashSet<string> ids, string text, string label)
     {
         using var doc = JsonDocument.Parse(text, TaskConfig.JSON_OPTS);
         if (doc.RootElement.ValueKind != JsonValueKind.Object) return;
@@ -365,24 +386,25 @@ public static class Achievements
                 Plugin.Logger.LogWarning($"[Achieve] {label} 里有重复 id \"{d.Id}\"，后一条已忽略");
                 continue;
             }
+
             list.Add(d);
         }
     }
 
-        static Def ParseDef(JsonElement e)
+    static Def ParseDef(JsonElement e)
     {
         var d = new Def
         {
-            Id     = Str(e, "id").Trim(),
-            Name   = Str(e, "name"),
-            Desc   = Str(e, "desc"),
-            Type   = Str(e, "type").Trim().ToLowerInvariant(),
-            Diff   = Str(e, "diff").Trim(),
-            Need   = Str(e, "need").Trim().ToLowerInvariant(),
-            Clear  = Str(e, "clear").Trim().ToLowerInvariant(),
-            Song   = Str(e, "song").Trim(),
-            Task   = Str(e, "task").Trim(),
-            Cat    = Str(e, "cat").Trim(),
+            Id = Str(e, "id").Trim(),
+            Name = Str(e, "name"),
+            Desc = Str(e, "desc"),
+            Type = Str(e, "type").Trim().ToLowerInvariant(),
+            Diff = Str(e, "diff").Trim(),
+            Need = Str(e, "need").Trim().ToLowerInvariant(),
+            Clear = Str(e, "clear").Trim().ToLowerInvariant(),
+            Song = Str(e, "song").Trim(),
+            Task = Str(e, "task").Trim(),
+            Cat = Str(e, "cat").Trim(),
             MinGrade = Str(e, "minGrade").Trim(),
             Hidden = e.TryGetProperty("hidden", out var h) && h.ValueKind == JsonValueKind.True,
             Disabled = e.TryGetProperty("disabled", out var dz) && dz.ValueKind == JsonValueKind.True,
@@ -401,7 +423,7 @@ public static class Achievements
         return d;
     }
 
-        static void ParseGrades(JsonElement e, Def d)
+    static void ParseGrades(JsonElement e, Def d)
     {
         if (!e.TryGetProperty("grades", out var arr) || arr.ValueKind != JsonValueKind.Array) return;
         foreach (var ge in arr.EnumerateArray())
@@ -413,29 +435,35 @@ public static class Achievements
                 Plugin.Logger.LogWarning($"[Achieve] 「{d.Id}」的 grades 超过 4 条（最多 1-4 公众级 + 第 5 隐藏级），多出来的已忽略");
                 break;
             }
+
             var r = new Rung
             {
-                Diff     = Str(ge, "diff").Trim(),
-                Need     = Str(ge, "need").Trim().ToLowerInvariant(),
-                Clear    = Str(ge, "clear").Trim().ToLowerInvariant(),
-                Song     = Str(ge, "song").Trim(),
-                Task     = Str(ge, "task").Trim(),
+                Diff = Str(ge, "diff").Trim(),
+                Need = Str(ge, "need").Trim().ToLowerInvariant(),
+                Clear = Str(ge, "clear").Trim().ToLowerInvariant(),
+                Song = Str(ge, "song").Trim(),
+                Task = Str(ge, "task").Trim(),
                 MinGrade = Str(ge, "minGrade").Trim(),
-                Desc     = Str(ge, "desc"),
+                Desc = Str(ge, "desc"),
             };
-            if (ge.TryGetProperty("value", out var gv) && gv.ValueKind == JsonValueKind.Number) r.Value = gv.GetDouble();
+            if (ge.TryGetProperty("value", out var gv) && gv.ValueKind == JsonValueKind.Number)
+                r.Value = gv.GetDouble();
             if (ge.TryGetProperty("type", out _))
                 Plugin.Logger.LogWarning($"[Achieve] 「{d.Id}」的某一级写了 type —— 等级不换判据种类，已忽略（要换请另开一条成就）");
             d.Grades.Add(r);
         }
     }
 
-        public static string DefaultCatFor(string type)
+    public static string DefaultCatFor(string type)
     {
         switch ((type ?? "").Trim().ToLowerInvariant())
         {
-            case "clear": case "all": case "count": return "收集";
-            case "rating": case "exact": case "score": return "评级";
+            case "clear":
+            case "all":
+            case "count": return "收集";
+            case "rating":
+            case "exact":
+            case "score": return "评级";
             case "task": return "课题";
             default: return "其他";
         }
@@ -457,7 +485,6 @@ public static class Achievements
                 {
                     foreach (var p in doc.RootElement.EnumerateObject())
                     {
-
                         if (p.Name == TitleKey)
                         {
                             equipped = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : "";
@@ -467,16 +494,21 @@ public static class Achievements
                         if (p.Name == TitleGradeKey)
                         {
                             titleGrade = p.Value.ValueKind == JsonValueKind.Number
-                                         && p.Value.TryGetInt32(out var tg) && tg >= 1 && tg <= 5 ? tg : 0;
+                                         && p.Value.TryGetInt32(out var tg) && tg >= 1 && tg <= 5
+                                ? tg
+                                : 0;
                             continue;
                         }
+
                         if (p.Value.ValueKind != JsonValueKind.Object) continue;
                         m[p.Name] = new State
                         {
                             At = Str(p.Value, "at"),
 
                             Grade = p.Value.TryGetProperty("grade", out var g) && g.ValueKind == JsonValueKind.Number
-                                    && g.TryGetInt32(out var gi) && gi >= 2 ? gi : 1,
+                                                                               && g.TryGetInt32(out var gi) && gi >= 2
+                                ? gi
+                                : 1,
                             Unseen = p.Value.TryGetProperty("unseen", out var u) && u.ValueKind == JsonValueKind.True,
                         };
                     }
@@ -485,7 +517,6 @@ public static class Achievements
         }
         catch (Exception ex)
         {
-
             Plugin.Logger.LogError($"[Achieve] achievements_progress.json 读取失败: {ex.Message}");
             try
             {
@@ -495,7 +526,8 @@ public static class Achievements
             catch (Exception bex)
             {
                 backupFailed = true;
-                Plugin.Logger.LogError($"[Achieve] 坏档连备份都失败（{bex.Message}）—— 本次会话**不写** achievements_progress.json，免得把还能救的数据盖掉");
+                Plugin.Logger.LogError(
+                    $"[Achieve] 坏档连备份都失败（{bex.Message}）—— 本次会话**不写** achievements_progress.json，免得把还能救的数据盖掉");
             }
         }
         finally
@@ -511,7 +543,7 @@ public static class Achievements
         }
     }
 
-        static string Str(JsonElement o, string k)
+    static string Str(JsonElement o, string k)
         => o.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : "";
 
     static string Esc(string s)
@@ -519,11 +551,17 @@ public static class Achievements
 
     static readonly List<ChartRating> _noCharts = new List<ChartRating>();
 
-        static List<ChartRating> Snap => Plugin.ChartRatings ?? _noCharts;
+    static List<ChartRating> Snap => Plugin.ChartRatings ?? _noCharts;
 
-        sealed class Ev { public Def D; public int G; public bool IsNew; public string At; }
+    sealed class Ev
+    {
+        public Def D;
+        public int G;
+        public bool IsNew;
+        public string At;
+    }
 
-        public static void CheckAll(string reason)
+    public static void CheckAll(string reason)
     {
         if (!_loaded) Load();
 
@@ -544,18 +582,20 @@ public static class Achievements
                 int best = cur;
 
                 for (int g = Math.Max(cur + 1, from); g <= maxG; g++)
-                    if (Eval(LevelDef(d, g)).Ok) best = g;
+                    if (Eval(LevelDef(d, g)).Ok)
+                        best = g;
                 if (best <= cur) continue;
                 if (now == null) now = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-                (fresh ?? (fresh = new List<Ev>())).Add(new Ev { D = d, G = best, IsNew = !has, At = has ? st.At : null });
+                (fresh ?? (fresh = new List<Ev>())).Add(new Ev
+                    { D = d, G = best, IsNew = !has, At = has ? st.At : null });
             }
+
             if (fresh == null) return;
 
             var next = new Dictionary<string, State>(_states);
             foreach (var e in fresh)
                 next[e.D.Id] = new State
                 {
-
                     At = e.IsNew || string.IsNullOrEmpty(e.At) ? now : e.At,
                     Grade = e.G,
                     Unseen = true,
@@ -570,9 +610,18 @@ public static class Achievements
         var namesUp = new List<string>();
         foreach (var e in fresh)
         {
-            if (e.IsNew) { nNew++; namesNew.Add(e.D.Name); }
-            else { nUp++; namesUp.Add(e.D.Name + "→" + GradeRoman(e.G)); }
+            if (e.IsNew)
+            {
+                nNew++;
+                namesNew.Add(e.D.Name);
+            }
+            else
+            {
+                nUp++;
+                namesUp.Add(e.D.Name + "→" + GradeRoman(e.G));
+            }
         }
+
         string line = $"[Achieve] ({reason}) 新解锁 {nNew} 个";
         if (nNew > 0) line += "：" + string.Join("、", namesNew);
         if (nUp > 0) line += $"；升级 {nUp} 个：" + string.Join("、", namesUp);
@@ -581,7 +630,7 @@ public static class Achievements
         foreach (var e in fresh) Notify(e.D, e.G, e.IsNew);
     }
 
-        public static void Notify(Def d, int grade, bool isNew)
+    public static void Notify(Def d, int grade, bool isNew)
     {
         if (grade < 1) grade = 1;
         Plugin.Logger.LogInfo(isNew
@@ -597,20 +646,19 @@ public static class Achievements
             isNew ? "成就解锁" : "成就升级 " + GradeRoman(grade), accent);
     }
 
-        static Progress Eval(Def d)
+    static Progress Eval(Def d)
     {
-
         if (d.Type != "task" && (d.MinGrade ?? "").Length > 0)
             WarnOnce(d, $"minGrade 只对 task 有效（这条是 {d.Type}），已忽略");
         switch (d.Type)
         {
-            case "clear":  return EvalClear(d);
-            case "all":    return EvalCharts(d, -1);
-            case "count":  return EvalCharts(d, (int)d.Value);
+            case "clear": return EvalClear(d);
+            case "all": return EvalCharts(d, -1);
+            case "count": return EvalCharts(d, (int)d.Value);
             case "rating": return EvalRating(d);
-            case "exact":  return EvalExact(d);
-            case "score":  return EvalScore(d);
-            case "task":   return EvalTask(d);
+            case "exact": return EvalExact(d);
+            case "score": return EvalScore(d);
+            case "task": return EvalTask(d);
             default:
                 WarnOnce(d, $"认不出的 type「{d.Type}」—— 这条永远不会解锁");
                 return default;
@@ -620,7 +668,11 @@ public static class Achievements
     static Progress EvalClear(Def d)
     {
         int need = Level(d.Clear.Length > 0 ? d.Clear : d.Need);
-        if (need < 0) { WarnOnce(d, $"通关等级「{(d.Clear.Length > 0 ? d.Clear : d.Need)}」认不出"); return default; }
+        if (need < 0)
+        {
+            WarnOnce(d, $"通关等级「{(d.Clear.Length > 0 ? d.Clear : d.Need)}」认不出");
+            return default;
+        }
 
         int best = 0;
         foreach (var c in Snap)
@@ -634,16 +686,21 @@ public static class Achievements
         return new Progress { Ok = best >= need, Now = best, Need = need };
     }
 
-        static Progress EvalCharts(Def d, int want)
+    static Progress EvalCharts(Def d, int want)
     {
         int need = Level(d.Need.Length > 0 ? d.Need : d.Clear);
-        if (need < 0) { WarnOnce(d, $"通关等级「{d.Need}」认不出"); return default; }
+        if (need < 0)
+        {
+            WarnOnce(d, $"通关等级「{d.Need}」认不出");
+            return default;
+        }
 
         var idx = Index();
         int got = 0;
         var rows = ConstTable.RowsOf(d.Diff);
         foreach (var key in rows)
-            if (idx.TryGetValue(key, out var c) && LevelOf(c) >= need) got++;
+            if (idx.TryGetValue(key, out var c) && LevelOf(c) >= need)
+                got++;
 
         if (rows.Count == 0) return new Progress { Ok = false, Now = 0, Need = want > 0 ? want : 1 };
 
@@ -653,7 +710,6 @@ public static class Achievements
 
     static Progress EvalRating(Def d)
     {
-
         double r = Plugin.DisplayRating;
         return new Progress
         {
@@ -674,7 +730,8 @@ public static class Achievements
     {
         ulong best = 0;
         foreach (var c in Snap)
-            if (c != null && DiffOk(d.Diff, c.Difficulty) && c.Score > best) best = c.Score;
+            if (c != null && DiffOk(d.Diff, c.Difficulty) && c.Score > best)
+                best = c.Score;
         long need = (long)Math.Max(0, d.Value);
         return new Progress { Ok = (long)best >= need, Now = (long)best, Need = need };
     }
@@ -698,7 +755,7 @@ public static class Achievements
         bool ok;
         switch (k.ToLowerInvariant())
         {
-            case "all_tiers":  ok = AllTiersCleared(need);  break;
+            case "all_tiers": ok = AllTiersCleared(need); break;
             case "all_themes": ok = AllThemesCleared(need); break;
             case "final":
 
@@ -706,14 +763,20 @@ public static class Achievements
                 ok = FinalCleared();
                 break;
             default:
-                if (k.Length == 0) { WarnOnce(d, "task 没写"); return default; }
+                if (k.Length == 0)
+                {
+                    WarnOnce(d, "task 没写");
+                    return default;
+                }
+
                 ok = TaskOk(k, need);
                 break;
         }
+
         return new Progress { Ok = ok, Now = ok ? 1 : 0, Need = 1 };
     }
 
-        static bool TaskOk(string key, int need)
+    static bool TaskOk(string key, int need)
     {
         if (TaskProgress.Get(key) != null) return RecOk(key, need);
         if (key.IndexOf('@') >= 0) return false;
@@ -721,80 +784,96 @@ public static class Achievements
         var c = TaskConfig.FindAny(key);
         if (c == null) return false;
         foreach (var diff in c.DiffChoices())
-            if (RecOk(TaskConfig.ProgKey(c, diff), need)) return true;
+            if (RecOk(TaskConfig.ProgKey(c, diff), need))
+                return true;
         return false;
     }
 
-        static bool RecOk(string key, int need)
+    static bool RecOk(string key, int need)
     {
         var rec = TaskProgress.Get(key);
         return rec != null && rec.Cleared
-               && (need == 0 || TaskProgress.GradeRank(rec.Grade) >= need);
+                           && (need == 0 || TaskProgress.GradeRank(rec.Grade) >= need);
     }
 
-        static bool AllTiersCleared(int need)
+    static bool AllTiersCleared(int need)
     {
         var t = TaskConfig.Tiers;
         if (t == null || t.Count == 0) return false;
         foreach (var c in t)
-            if (c != null && !RecOk(TaskConfig.ProgKey(c), need)) return false;
+            if (c != null && !RecOk(TaskConfig.ProgKey(c), need))
+                return false;
         return true;
     }
 
-        static bool AllThemesCleared(int need)
+    static bool AllThemesCleared(int need)
     {
         var m = TaskConfig.Themes;
         if (m == null || m.Count == 0) return false;
         foreach (var c in m)
-            if (c != null && !RecOk(TaskConfig.ProgKey(c), need)) return false;
+            if (c != null && !RecOk(TaskConfig.ProgKey(c), need))
+                return false;
         return true;
     }
 
-        static bool FinalCleared()
+    static bool FinalCleared()
     {
         var t = TaskConfig.Tiers;
-        if (t != null) foreach (var c in t) if (c != null && c.Final) return TaskConfig.AnyCleared(c);
+        if (t != null)
+            foreach (var c in t)
+                if (c != null && c.Final)
+                    return TaskConfig.AnyCleared(c);
         var m = TaskConfig.Themes;
-        if (m != null) foreach (var c in m) if (c != null && c.Final) return TaskConfig.AnyCleared(c);
+        if (m != null)
+            foreach (var c in m)
+                if (c != null && c.Final)
+                    return TaskConfig.AnyCleared(c);
         return false;
     }
 
-        static Dictionary<string, ChartRating> Index()
+    static Dictionary<string, ChartRating> Index()
     {
         var m = new Dictionary<string, ChartRating>(StringComparer.Ordinal);
         foreach (var c in Snap)
-            if (c != null) m[ConstTable.GetKey(c.SongId, c.Difficulty)] = c;
+            if (c != null)
+                m[ConstTable.GetKey(c.SongId, c.Difficulty)] = c;
         return m;
     }
 
-        static int LevelOf(ChartRating c)
+    static int LevelOf(ChartRating c)
         => c.IsPM ? 4 : c.IsFC ? 3 : (c.PaceValue >= 0 ? 2 : 1);
 
-        static int Level(string s)
+    static int Level(string s)
     {
         switch ((s ?? "").Trim())
         {
-            case "cleared": case "clear": case "pass": case "divecleared": return 2;
-            case "fullink": case "fc": return 3;
-            case "perfectdive": case "pd": return 4;
+            case "cleared":
+            case "clear":
+            case "pass":
+            case "divecleared": return 2;
+            case "fullink":
+            case "fc": return 3;
+            case "perfectdive":
+            case "pd": return 4;
             default: return -1;
         }
     }
 
-        static bool DiffOk(string want, string have)
+    static bool DiffOk(string want, string have)
         => string.IsNullOrEmpty(want) || want == ConstTable.AnyDiff
-           || string.Equals(want, have, StringComparison.OrdinalIgnoreCase);
+                                      || string.Equals(want, have, StringComparison.OrdinalIgnoreCase);
 
-        static void WarnOnce(Def d, string msg)
+    static void WarnOnce(Def d, string msg)
     {
         lock (_lock)
         {
             if (!_warned.Add(d.Id)) return;
         }
+
         Plugin.Logger.LogWarning($"[Achieve] 成就「{d.Id}」：{msg}");
     }
 
-        static readonly object _saveLock = new object();
+    static readonly object _saveLock = new object();
 
     static void Save()
     {
@@ -802,17 +881,23 @@ public static class Achievements
         lock (_lock) bad = _statesBad;
         if (bad)
         {
-
-            Plugin.Logger.LogError("[Achieve] 上次读档失败且备份没成功 —— 这次不写 achievements_progress.json（防止把还能救的数据盖掉）。把文件修好后重启游戏可解除");
+            Plugin.Logger.LogError(
+                "[Achieve] 上次读档失败且备份没成功 —— 这次不写 achievements_progress.json（防止把还能救的数据盖掉）。把文件修好后重启游戏可解除");
             return;
         }
+
         try
         {
-            Directory.CreateDirectory(TaskConfig.Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             Dictionary<string, State> snap;
             string eq;
             int sel;
-            lock (_lock) { snap = _states; eq = _equipped; sel = _titleGradeSel; }
+            lock (_lock)
+            {
+                snap = _states;
+                eq = _equipped;
+                sel = _titleGradeSel;
+            }
 
             var sb = new StringBuilder();
             sb.AppendLine("{");
@@ -825,12 +910,12 @@ public static class Achievements
             int i = 0;
             foreach (var kv in snap)
             {
-
                 string un = kv.Value.Unseen ? ", \"unseen\": true" : "";
                 string gr = kv.Value.Grade >= 2 ? $", \"grade\": {kv.Value.Grade}" : "";
                 sb.Append($"  \"{Esc(kv.Key)}\": {{ \"at\": \"{Esc(kv.Value.At)}\"{un}{gr} }}");
                 sb.AppendLine(++i < snap.Count ? "," : "");
             }
+
             sb.AppendLine("}");
             lock (_saveLock) System.IO.File.WriteAllText(StateFile, sb.ToString());
         }
@@ -840,7 +925,7 @@ public static class Achievements
         }
     }
 
-        static List<Def> LoadDisabledExtraDefs()
+    static List<Def> LoadDisabledExtraDefs()
     {
         var keep = new List<Def>();
         try
@@ -849,7 +934,8 @@ public static class Achievements
             if (!System.IO.File.Exists(path)) return keep;
             using var doc = JsonDocument.Parse(System.IO.File.ReadAllText(path), TaskConfig.JSON_OPTS);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) return keep;
-            if (!doc.RootElement.TryGetProperty("list", out var arr) || arr.ValueKind != JsonValueKind.Array) return keep;
+            if (!doc.RootElement.TryGetProperty("list", out var arr) || arr.ValueKind != JsonValueKind.Array)
+                return keep;
             foreach (var e in arr.EnumerateArray())
             {
                 if (e.ValueKind != JsonValueKind.Object) continue;
@@ -861,15 +947,15 @@ public static class Achievements
         {
             Plugin.Logger.LogWarning($"[Achieve] 读旧 extra 里的停用条目失败（这次保存可能把它们丢掉）: {ex.Message}");
         }
+
         return keep;
     }
 
-        public static string SaveExtra(List<Def> rows)
+    public static string SaveExtra(List<Def> rows)
     {
         if (rows == null) return "列表是空的";
         try
         {
-
             var all = new List<Def>(rows);
             foreach (var d in LoadDisabledExtraDefs())
                 if (!all.Exists(x => x != null && string.Equals((x.Id ?? "").Trim(), d.Id, StringComparison.Ordinal)))
@@ -878,8 +964,10 @@ public static class Achievements
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var sb = new StringBuilder();
             sb.AppendLine("{");
-            sb.AppendLine("  \"_说明\": \"成就定义覆盖 / 追加文件。同 id 覆盖 achievements.json 里那一条（启动日志里会记一笔）；新 id 就是追加一条。手改也行，改完重开游戏生效。\",");
-            sb.AppendLine("  \"_字段\": \"同 achievements.json：id/name/desc/type 必写；cat 是面板上的分类（收集 / 评级 / 课题 / 其他，也可以自己编一个）；minGrade = task 的档位下限（C / B / A / S / S+）；grades 是等级阶梯（第 1 条 = 第 2 级，第 1 级 = 基础判据本身，空字段 = 继承基础，最多 4 条 = 第 5 级为隐藏级）；disabled = 停用这一条（同 id 压掉基础那份，面板里一条都不出现）\",");
+            sb.AppendLine(
+                "  \"_说明\": \"成就定义覆盖 / 追加文件。同 id 覆盖 achievements.json 里那一条（启动日志里会记一笔）；新 id 就是追加一条。手改也行，改完重开游戏生效。\",");
+            sb.AppendLine(
+                "  \"_字段\": \"同 achievements.json：id/name/desc/type 必写；cat 是面板上的分类（收集 / 评级 / 课题 / 其他，也可以自己编一个）；minGrade = task 的档位下限（C / B / A / S / S+）；grades 是等级阶梯（第 1 条 = 第 2 级，第 1 级 = 基础判据本身，空字段 = 继承基础，最多 4 条 = 第 5 级为隐藏级）；disabled = 停用这一条（同 id 压掉基础那份，面板里一条都不出现）\",");
             sb.AppendLine("  \"list\": [");
             for (int i = 0; i < all.Count; i++)
             {
@@ -893,11 +981,13 @@ public static class Achievements
                 sb.Append("    ").Append(DefJson(d, id, type));
                 sb.AppendLine(i < all.Count - 1 ? "," : "");
             }
+
             sb.AppendLine("  ]");
             sb.AppendLine("}");
-            Directory.CreateDirectory(TaskConfig.Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             System.IO.File.WriteAllText(DefExtraFile, sb.ToString());
-            Plugin.Logger.LogInfo($"[Achieve] achievements_extra.json 已保存 {all.Count} 条（其中停用 {all.Count - rows.Count} 条原样留住）→ {DefExtraFile}");
+            Plugin.Logger.LogInfo(
+                $"[Achieve] achievements_extra.json 已保存 {all.Count} 条（其中停用 {all.Count - rows.Count} 条原样留住）→ {DefExtraFile}");
             return null;
         }
         catch (Exception ex)
@@ -906,7 +996,7 @@ public static class Achievements
         }
     }
 
-        static string DefJson(Def d, string id, string type)
+    static string DefJson(Def d, string id, string type)
     {
         var sb = new StringBuilder();
         sb.Append("{ \"id\": \"").Append(Esc(id)).Append('"');
@@ -940,17 +1030,20 @@ public static class Achievements
                 if (i > 0) sb.Append(", ");
                 sb.Append(RungJson(d.Grades[i]));
             }
+
             sb.Append(" ]");
         }
+
         sb.Append(" }");
         return sb.ToString();
     }
 
-        static string RungJson(Rung r)
+    static string RungJson(Rung r)
     {
         r ??= new Rung();
         var sb = new StringBuilder("{ ");
         bool first = true;
+
         void S(string key, string val)
         {
             if (string.IsNullOrEmpty(val)) return;
@@ -958,6 +1051,7 @@ public static class Achievements
             first = false;
             sb.Append('"').Append(key).Append("\": \"").Append(Esc(val)).Append('"');
         }
+
         S("desc", r.Desc);
         S("diff", r.Diff);
         S("need", r.Need);
@@ -970,19 +1064,20 @@ public static class Achievements
             first = false;
             sb.Append("\"value\": ").Append(r.Value.Value.ToString("G9", CultureInfo.InvariantCulture));
         }
+
         S("minGrade", r.MinGrade);
         sb.Append(" }");
         return sb.ToString();
     }
 
-        public static List<Def> All => _defs;
+    public static List<Def> All => _defs;
 
-        public static int MaxGrade(Def d)
+    public static int MaxGrade(Def d)
         => d?.Grades == null ? 1 : Math.Min(5, 1 + d.Grades.Count);
 
-        public static bool HasLadder(Def d) => d?.Grades != null && d.Grades.Count > 0;
+    public static bool HasLadder(Def d) => d?.Grades != null && d.Grades.Count > 0;
 
-        public static int FromLevel(Def d)
+    public static int FromLevel(Def d)
     {
         int m = MaxGrade(d);
         int f = d?.FromLevel ?? 1;
@@ -990,7 +1085,7 @@ public static class Achievements
         return f > m ? m : f;
     }
 
-        public static int GradeOf(Def d)
+    public static int GradeOf(Def d)
     {
         if (d == null || !_states.TryGetValue(d.Id, out var s)) return 0;
         int g = s.Grade < 1 ? 1 : s.Grade;
@@ -1001,13 +1096,13 @@ public static class Achievements
         return g > m ? m : g;
     }
 
-        public static int PublicGrade(Def d)
+    public static int PublicGrade(Def d)
     {
         int m = MaxGrade(d);
         return m >= 5 && GradeOf(d) < 5 ? 4 : m;
     }
 
-        public static Def LevelDef(Def b, int lv)
+    public static Def LevelDef(Def b, int lv)
     {
         if (b == null) return null;
         var gs = b.Grades;
@@ -1032,7 +1127,7 @@ public static class Achievements
         return d;
     }
 
-        public static string DescribeRung(Def d, int lv)
+    public static string DescribeRung(Def d, int lv)
     {
         if (d == null) return "";
         if (lv <= 1) return Describe(d);
@@ -1042,10 +1137,11 @@ public static class Achievements
             var r = gs[lv - 2];
             if (r != null && r.Desc.Length > 0) return r.Desc;
         }
+
         return Describe(LevelDef(d, lv));
     }
 
-        public static Progress ProgressNext(Def d)
+    public static Progress ProgressNext(Def d)
     {
         if (d == null) return default;
         int cur = GradeOf(d);
@@ -1055,12 +1151,13 @@ public static class Achievements
             int first = FromLevel(d);
             return first <= 1 ? Eval(d) : Eval(LevelDef(d, first));
         }
+
         int next = cur + 1;
         if (next > PublicGrade(d)) return new Progress { Ok = true, Now = 1, Need = 1, Note = "" };
         return Eval(LevelDef(d, next));
     }
 
-        public static string GradeRoman(int g)
+    public static string GradeRoman(int g)
     {
         switch (g)
         {
@@ -1073,7 +1170,7 @@ public static class Achievements
         }
     }
 
-        public static int GradeArgb(int g)
+    public static int GradeArgb(int g)
     {
         switch (g)
         {
@@ -1086,57 +1183,64 @@ public static class Achievements
         }
     }
 
-        public static bool IsFromBase(string id) => id != null && _baseIds.Contains(id);
+    public static bool IsFromBase(string id) => id != null && _baseIds.Contains(id);
 
-        public static bool IsFromExtra(string id) => id != null && _extraIds.Contains(id);
+    public static bool IsFromExtra(string id) => id != null && _extraIds.Contains(id);
 
-        public static bool IsGenerated(string id) => id != null && _genIds.Contains(id);
+    public static bool IsGenerated(string id) => id != null && _genIds.Contains(id);
 
     public static State GetState(string id)
         => id != null && _states.TryGetValue(id, out var s) ? s : null;
 
     public static bool IsUnlocked(string id) => id != null && _states.ContainsKey(id);
 
-        public static int UnlockedCount
+    public static int UnlockedCount
     {
         get
         {
             int n = 0;
-            var ds = _defs; var st = _states;
-            foreach (var d in ds) if (st.ContainsKey(d.Id)) n++;
+            var ds = _defs;
+            var st = _states;
+            foreach (var d in ds)
+                if (st.ContainsKey(d.Id))
+                    n++;
             return n;
         }
     }
 
-        public static bool IsVisible(Def d)
+    public static bool IsVisible(Def d)
         => d != null && (!d.Hidden || IsUnlocked(d.Id));
 
-        public static int CountedTotal
+    public static int CountedTotal
     {
         get
         {
             int n = 0;
-            var ds = _defs; var st = _states;
+            var ds = _defs;
+            var st = _states;
             foreach (var d in ds)
-                if (d != null && (!d.Hidden || st.ContainsKey(d.Id))) n++;
+                if (d != null && (!d.Hidden || st.ContainsKey(d.Id)))
+                    n++;
             return n;
         }
     }
 
-        public static int StatesRevision => _statesRev;
+    public static int StatesRevision => _statesRev;
 
-        public static int UnseenCount
+    public static int UnseenCount
     {
         get
         {
             int n = 0;
             var st = _states;
-            foreach (var kv in st) if (kv.Value.Unseen) n++;
+            foreach (var kv in st)
+                if (kv.Value.Unseen)
+                    n++;
             return n;
         }
     }
 
-        public static bool MarkSeen(string id)
+    public static bool MarkSeen(string id)
     {
         if (id == null) return false;
         lock (_lock)
@@ -1148,28 +1252,31 @@ public static class Achievements
             _states = next;
             _statesRev++;
         }
+
         Save();
         return true;
     }
 
-        public static string EquippedId => _equipped;
+    public static string EquippedId => _equipped;
 
-        public static Def EquippedDef
+    public static Def EquippedDef
     {
         get
         {
             string id = _equipped;
             if (string.IsNullOrEmpty(id)) return null;
             var ds = _defs;
-            foreach (var d in ds) if (d != null && d.Id == id) return d;
+            foreach (var d in ds)
+                if (d != null && d.Id == id)
+                    return d;
             return null;
         }
     }
 
-        public static bool IsEquipped(string id)
+    public static bool IsEquipped(string id)
         => !string.IsNullOrEmpty(id) && id == _equipped;
 
-        public static bool SetEquipped(string id)
+    public static bool SetEquipped(string id)
     {
         string want = (id ?? "").Trim();
         if (want.Length > 0 && !IsUnlocked(want)) return false;
@@ -1179,6 +1286,7 @@ public static class Achievements
             if (_equipped == want) return true;
             _equipped = want;
         }
+
         Save();
         Plugin.Logger.LogInfo(want.Length == 0
             ? "[Achieve] 称号已卸下"
@@ -1186,9 +1294,9 @@ public static class Achievements
         return true;
     }
 
-        public static int TitleGradeChoice => _titleGradeSel;
+    public static int TitleGradeChoice => _titleGradeSel;
 
-        public static int TitleDisplayGrade(Def d)
+    public static int TitleDisplayGrade(Def d)
     {
         int got = GradeOf(d);
         if (got <= 0) return 0;
@@ -1197,7 +1305,7 @@ public static class Achievements
         return sel >= 1 && sel < got && sel >= FromLevel(d) ? sel : got;
     }
 
-        public static bool SetTitleGrade(int grade)
+    public static bool SetTitleGrade(int grade)
     {
         int want = grade < 1 ? 0 : (grade > 5 ? 5 : grade);
         if (want >= 1)
@@ -1213,6 +1321,7 @@ public static class Achievements
             if (_titleGradeSel == want) return true;
             _titleGradeSel = want;
         }
+
         Save();
         Plugin.Logger.LogInfo(want <= 0
             ? "[Achieve] 称号显示等级：自动（跟着拿到的最高级走）"
@@ -1220,53 +1329,56 @@ public static class Achievements
         return true;
     }
 
-        public static Progress ProgressOf(Def d)
+    public static Progress ProgressOf(Def d)
     {
         if (d == null) return default;
         if (IsUnlocked(d.Id)) return new Progress { Ok = true, Now = 1, Need = 1, Note = "" };
         return Eval(d);
     }
 
-        public static string Describe(Def d)
+    public static string Describe(Def d)
     {
         string diff = (d.Diff == ConstTable.AnyDiff || d.Diff.Length == 0) ? "" : DiffShort(d.Diff) + " ";
         switch (d.Type)
         {
             case "clear":
             {
-
                 string lv = LevelName(d.Clear.Length > 0 ? d.Clear : d.Need);
                 return (d.Song.Length > 0
                            ? $"「{SongName(d.Song)}」的谱面拿到 {lv}"
                            : $"任意谱面拿到 {lv}")
-                     + (diff.Length > 0 ? $"（限 {diff.Trim()}）" : "");
+                       + (diff.Length > 0 ? $"（限 {diff.Trim()}）" : "");
             }
-            case "all":   return $"{diff}全部谱面都拿到 {LevelName(d.Need)}";
+            case "all": return $"{diff}全部谱面都拿到 {LevelName(d.Need)}";
             case "count": return $"{diff}拿到 {LevelName(d.Need)} 的谱面累计 {d.Value:0} 张";
             case "rating": return $"评级达到 {d.Value:F2}";
             case "exact": return $"EXACT 值达到 {d.Value:0}";
             case "score": return $"单曲分数达到 {d.Value:0}";
             case "task":
             {
-
                 string mg = (d.MinGrade ?? "").Trim();
                 switch ((d.Task ?? "").Trim().ToLowerInvariant())
                 {
-                    case "all_tiers":  return mg.Length == 0 ? "全部段位通过" : $"全部段位通过（每段档位 ≥ {TaskProgress.GradeWord(mg)}）";
-                    case "all_themes": return mg.Length == 0 ? "全部主题通过" : $"全部主题通过（每主题档位 ≥ {TaskProgress.GradeWord(mg)}）";
-                    case "final":      return "通过终局课题";
-                    default:           return DescribeTaskKey((d.Task ?? "").Trim(), mg);
+                    case "all_tiers": return mg.Length == 0 ? "全部段位通过" : $"全部段位通过（每段档位 ≥ {TaskProgress.GradeWord(mg)}）";
+                    case "all_themes":
+                        return mg.Length == 0 ? "全部主题通过" : $"全部主题通过（每主题档位 ≥ {TaskProgress.GradeWord(mg)}）";
+                    case "final": return "通过终局课题";
+                    default: return DescribeTaskKey((d.Task ?? "").Trim(), mg);
                 }
             }
             default: return $"（认不出的判据：{d.Type}）";
         }
     }
 
-        static string DescribeTaskKey(string key, string mg)
+    static string DescribeTaskKey(string key, string mg)
     {
         string baseKey = key, diff = "";
         int at = key.IndexOf('@');
-        if (at > 0) { baseKey = key.Substring(0, at); diff = key.Substring(at + 1); }
+        if (at > 0)
+        {
+            baseKey = key.Substring(0, at);
+            diff = key.Substring(at + 1);
+        }
 
         var c = TaskConfig.FindAny(baseKey);
         string name = c != null && !string.IsNullOrEmpty(c.Name) ? c.Name : baseKey;
@@ -1277,7 +1389,7 @@ public static class Achievements
         return s;
     }
 
-        static string LevelName(string lv)
+    static string LevelName(string lv)
     {
         switch (Level(lv))
         {
@@ -1288,19 +1400,19 @@ public static class Achievements
         }
     }
 
-        static string SongName(string songId)
+    static string SongName(string songId)
     {
         string n = SongInfoCache.GetName(songId);
         return string.IsNullOrEmpty(n) ? songId : n;
     }
 
-        static string DiffShort(string diff)
+    static string DiffShort(string diff)
     {
         string s = TaskConfig.DiffShort(diff);
         return string.IsNullOrEmpty(s) ? diff : s;
     }
 
-        const string SEED = @"{
+    const string SEED = @"{
   ""_说明"": ""成就定义。改完重开游戏生效。这个文件插件只读，不会回写。"",
   ""_字段"": ""id 唯一英文标识（存档按它存，改 id = 丢掉这条的解锁记录） / name 显示名 / desc 描述 / type 判据 / hidden true = 解锁前整条不显示、也不计入总数（解锁才现身）"",
   ""_判据"": ""clear 某张谱面达到某等级 / all 某难度的全部谱面都达到 / count N 张达到 / rating 评级到 / exact EXACT 到 / score 单曲分数到 / task 课题通过"",
@@ -1324,5 +1436,5 @@ public static class Achievements
   ]
 }";
 
-        const string EXTRA_SEED = "";
+    const string EXTRA_SEED = "";
 }

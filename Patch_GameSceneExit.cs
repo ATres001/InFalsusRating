@@ -34,6 +34,7 @@ public static class Patch_GameSceneExit
 
     static void Prefix()
     {
+        GameProbe.RestoreStoryEnvelopeNow();
         if (!SceneProbe.OurAbort) SceneHooks.OnGameSceneExit();
     }
 }

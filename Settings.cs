@@ -10,69 +10,91 @@ namespace InFalsusRating;
 
 public static class Settings
 {
-        public static string JsonPath => Path.Combine(
-        BepInEx.Paths.ConfigPath, "InFalsusRating", "settings.json");
+    public static string JsonPath => Path.Combine(ConfigRoot, "settings.json");
 
-        public static volatile bool OverlayHidden;
+    public static volatile bool OverlayHidden;
 
-        public static volatile bool HideOnMouseAway = true;
+    public static volatile bool HideOnMouseAway = true;
 
-        public static volatile bool HideOnLeaveGame = true;
+    public static volatile bool HideOnLeaveGame = true;
 
-        public static volatile bool HasOverlayScale;
-        public static volatile float OverlayScale;
+    public static volatile bool HasOverlayScale;
+    public static volatile float OverlayScale;
 
-        public static volatile bool HasTitleScale;
-        public static volatile float TitleScale;
+    public static volatile bool HasTitleScale;
+    public static volatile float TitleScale;
 
-        public static volatile bool ParticlesOn = true;
+    public static volatile bool ParticlesOn = true;
 
-        public static volatile bool BottomLayerOn = true;
+    public static volatile bool BottomLayerOn = true;
 
-        public static volatile float PanelScale = 1f;
+    public static volatile float PanelScale = 1f;
 
-        public static volatile int PanelOpacity = 100;
+    public static volatile int PanelOpacity = 100;
 
-        public static volatile bool RememberTab;
+    public static volatile bool RememberTab;
 
-        public static volatile int LastTab;
+    public static volatile int LastTab;
 
-        public static volatile string ExportDir = "";
+    public static string ConfigRoot => Path.Combine(BepInEx.Paths.ConfigPath, "InFalsusRating");
 
-        public static string ExportRoot
+    public static volatile string CustomExportDir = "";
+
+    public static string ExportRoot
     {
         get
         {
-            string d = ExportDir;
+            string d = CustomExportDir;
             if (!string.IsNullOrEmpty(d))
             {
-                try { if (Path.IsPathRooted(d)) return d; }
-                catch { }
+                try
+                {
+                    if (Path.IsPathRooted(d)) return d;
+                }
+                catch
+                {
+                }
             }
-            return Path.Combine(Paths.ConfigPath, "InFalsusRating");
+
+            return ConfigRoot;
         }
     }
 
-        public static volatile bool ToastOn = true;
+    public static volatile bool ToastOn = true;
 
-        public static volatile int ToastHoldMs = 2600;
+    public static volatile int ToastHoldMs = 2600;
 
-        static readonly object _saveLock = new object();
+    static readonly object _saveLock = new object();
 
-        public static void Load()
+    public static void Init()
+    {
+        ExternalSaveManager.RegisterFile(JsonPath, Load);
+    }
+
+    public static void Load()
     {
         try
         {
-            if (File.Exists(JsonPath)) ParseInto(File.ReadAllText(JsonPath));
+            if (File.Exists(JsonPath))
+            {
+                string text;
+                lock (_saveLock)
+                {
+                    text = File.ReadAllText(JsonPath);
+                }
+
+                ParseInto(text);
+            }
         }
         catch (Exception ex)
         {
             Plugin.Logger.LogWarning($"[设置] settings.json 读不了（按默认值走）: {ex.Message}");
         }
+
         Push();
     }
 
-        static void Push()
+    static void Push()
     {
         Plugin.OverlayManuallyHidden = OverlayHidden;
         Win32Overlay.PlayerPanel.ParticlesOn = ParticlesOn;
@@ -89,9 +111,19 @@ public static class Settings
             OverlayHidden = Bool(ov, "hidden", OverlayHidden);
             HideOnMouseAway = Bool(ov, "hideMouse", HideOnMouseAway);
             HideOnLeaveGame = Bool(ov, "hideLeave", HideOnLeaveGame);
-            if (Num(ov, "scale", out float sc)) { HasOverlayScale = true; OverlayScale = sc < 0f ? 0f : sc; }
-            if (Num(ov, "titleScale", out float ts)) { HasTitleScale = true; TitleScale = ts; }
+            if (Num(ov, "scale", out float sc))
+            {
+                HasOverlayScale = true;
+                OverlayScale = sc < 0f ? 0f : sc;
+            }
+
+            if (Num(ov, "titleScale", out float ts))
+            {
+                HasTitleScale = true;
+                TitleScale = ts;
+            }
         }
+
         if (Obj(root, "panel", out var pn))
         {
             ParticlesOn = Bool(pn, "particles", ParticlesOn);
@@ -102,11 +134,13 @@ public static class Settings
             RememberTab = Bool(pn, "rememberTab", RememberTab);
             if (Num(pn, "lastTab", out float lt)) LastTab = (int)Math.Round(lt);
         }
+
         if (Obj(root, "files", out var fl))
         {
             if (fl.TryGetProperty("exportDir", out var ed) && ed.ValueKind == JsonValueKind.String)
-                ExportDir = ed.GetString() ?? "";
+                CustomExportDir = ed.GetString() ?? "";
         }
+
         if (Obj(root, "play", out var pl))
         {
             ToastOn = Bool(pl, "toast", ToastOn);
@@ -123,14 +157,15 @@ public static class Settings
         }
     }
 
-        public static void Save()
+    public static void Save()
     {
         try
         {
             var sb = new StringBuilder();
             sb.AppendLine("{");
 
-            sb.AppendLine("  \"_字段\": \"F6 面板「设置」页写出来的。手改也行，但改完要重启游戏。scale/titleScale 没写过就跟着 overlay.json 走。panel.scale = 面板大小（1 = 1280x720）、panel.opacity = 不透明度百分比、files.exportDir = 导出位置（空 = 默认夹子）、play.toastHold = 弹条停留毫秒、hotkeys = 改过的全局快捷键（只写改过的，键名见 Hotkeys.cs 的动作表，值写成 Ctrl+F1 / F9 这种，Esc 和鼠标键不能绑定）。\",");
+            sb.AppendLine(
+                "  \"_字段\": \"F6 面板「设置」页写出来的。手改也行，但改完要重启游戏。scale/titleScale 没写过就跟着 overlay.json 走。panel.scale = 面板大小（1 = 1280x720）、panel.opacity = 不透明度百分比、files.exportDir = 导出位置（空 = 默认夹子）、play.toastHold = 弹条停留毫秒、hotkeys = 改过的全局快捷键（只写改过的，键名见 Hotkeys.cs 的动作表，值写成 Ctrl+F1 / F9 这种，Esc 和鼠标键不能绑定）。\",");
             sb.AppendLine("  \"v\": 1,");
             sb.AppendLine("  \"overlay\": {");
             sb.AppendLine($"    \"hidden\": {B(OverlayHidden)},");
@@ -152,7 +187,7 @@ public static class Settings
             sb.AppendLine("  },");
             sb.AppendLine("  \"files\": {");
 
-            sb.AppendLine($"    \"exportDir\": {Esc(ExportDir)}");
+            sb.AppendLine($"    \"exportDir\": {Esc(CustomExportDir)}");
             sb.AppendLine("  },");
             sb.AppendLine("  \"play\": {");
             sb.AppendLine($"    \"toast\": {B(ToastOn)},");
@@ -166,6 +201,7 @@ public static class Settings
                 string t = Hotkeys.OverrideText(i);
                 if (t != null) hkLines.Add($"    \"{Hotkeys.Defs[i].Id}\": {Esc(t)}");
             }
+
             for (int i = 0; i < hkLines.Count; i++)
                 sb.AppendLine(hkLines[i] + (i < hkLines.Count - 1 ? "," : ""));
             sb.AppendLine("  }");
@@ -184,9 +220,8 @@ public static class Settings
         }
     }
 
-        static void Trim(StringBuilder sb)
+    static void Trim(StringBuilder sb)
     {
-
         int i = sb.Length - 1;
         while (i > 0 && (sb[i] == '\n' || sb[i] == '\r')) i--;
         if (sb[i] == ',') sb[i] = ' ';
@@ -195,7 +230,7 @@ public static class Settings
     static string B(bool v) => v ? "true" : "false";
     static string F(float v) => v.ToString("0.####", CultureInfo.InvariantCulture);
 
-        static string Esc(string s)
+    static string Esc(string s)
     {
         if (string.IsNullOrEmpty(s)) return "\"\"";
         var sb = new StringBuilder(s.Length + 8);
@@ -215,6 +250,7 @@ public static class Settings
                     break;
             }
         }
+
         return sb.Append('"').ToString();
     }
 
@@ -223,9 +259,10 @@ public static class Settings
 
     static bool Bool(JsonElement o, string k, bool dflt)
         => o.TryGetProperty(k, out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False)
-           ? v.GetBoolean() : dflt;
+            ? v.GetBoolean()
+            : dflt;
 
-        static bool BoolOpt(JsonElement o, string k, out bool val)
+    static bool BoolOpt(JsonElement o, string k, out bool val)
     {
         val = false;
         if (!o.TryGetProperty(k, out var v)) return false;

@@ -11,31 +11,34 @@ namespace InFalsusRating;
 
 public static class PlayerLevel
 {
-        public static string JsonPath => Path.Combine(
-        BepInEx.Paths.ConfigPath, "InFalsusRating", "level.json");
+    public static string JsonPath => Path.Combine(Settings.ConfigRoot, "level.json");
 
-        const int SaveMinMs = 1000;
+    const int SaveMinMs = 1000;
 
-        const double ScoreMax = 100_000_000.0;
+    const double ScoreMax = 100_000_000.0;
 
-        const long XpMax = 1_000_000_000_000_000L;
+    const long XpMax = 1_000_000_000_000_000L;
 
     static double BaseOf(string diff)
     {
         switch (diff?.ToUpperInvariant())
         {
-            case "MINIMAL": case "MIN":     return 10;
-            case "EVOLVED": case "EVO":     return 18;
-            case "ULTIMATE": case "ULT":    return 28;
-            case "FORBIDDEN": case "FBD":   return 40;
-            default:                        return 0;
+            case "MINIMAL":
+            case "MIN": return 10;
+            case "EVOLVED":
+            case "EVO": return 18;
+            case "ULTIMATE":
+            case "ULT": return 28;
+            case "FORBIDDEN":
+            case "FBD": return 40;
+            default: return 0;
         }
     }
 
-        static long GainOf(in GameResultV4 r)
+    static long GainOf(in GameResultV4 r)
         => GainFor(r.Difficulty.ToString(), r.PlayerScore, (int)r.CalculatedResultClear);
 
-        public static int GainFor(string diff, ulong score, int clear)
+    public static int GainFor(string diff, ulong score, int clear)
     {
         double b = BaseOf(diff);
         if (b <= 0) return 0;
@@ -53,16 +56,16 @@ public static class PlayerLevel
         return v < 1 ? 1 : (int)Math.Min(v, int.MaxValue);
     }
 
-        public static long NeedOf(int level) => level < 1 ? 0 : 50L + 6L * (level - 1);
+    public static long NeedOf(int level) => level < 1 ? 0 : 50L + 6L * (level - 1);
 
-        public static long CumOf(int level)
+    public static long CumOf(int level)
     {
         if (level <= 1) return 0;
         long l = level;
         return 3L * l * l + 41L * l - 44L;
     }
 
-        public static int LevelOf(long xp)
+    public static int LevelOf(long xp)
     {
         if (xp <= 0) return 1;
         double d = (-41.0 + Math.Sqrt(2209.0 + 12.0 * xp)) / 6.0;
@@ -83,23 +86,26 @@ public static class PlayerLevel
     static bool _dirty;
     static int _lastSaveTick = unchecked(Environment.TickCount - SaveMinMs);
 
-        public readonly struct Snapshot
+    public readonly struct Snapshot
     {
-                public readonly int Level;
+        public readonly int Level;
 
-                public readonly bool Seeded;
+        public readonly bool Seeded;
 
-                public readonly double Pct;
+        public readonly double Pct;
 
-                public readonly string LevelText;
+        public readonly string LevelText;
 
         public Snapshot(int level, bool seeded, double pct, string text)
         {
-            Level = level; Seeded = seeded; Pct = pct; LevelText = text;
+            Level = level;
+            Seeded = seeded;
+            Pct = pct;
+            LevelText = text;
         }
     }
 
-        public static Snapshot Get()
+    public static Snapshot Get()
     {
         lock (_lock)
         {
@@ -114,7 +120,12 @@ public static class PlayerLevel
         }
     }
 
-        public static void Load()
+    public static void Init()
+    {
+        ExternalSaveManager.RegisterFile(JsonPath, Load);
+    }
+
+    public static void Load()
     {
         try
         {
@@ -136,7 +147,7 @@ public static class PlayerLevel
         _dirty = false;
     }
 
-        public static void Observe(List<GameResultV4> all)
+    public static void Observe(List<GameResultV4> all)
     {
         if (all == null) return;
 
@@ -145,7 +156,6 @@ public static class PlayerLevel
 
         try
         {
-
             bool needSeed;
             lock (_lock) needSeed = !_seeded && all.Count > 0;
 
@@ -160,7 +170,6 @@ public static class PlayerLevel
 
                 if (!_seeded)
                 {
-
                     double sum = 0;
                     int plays = 0, skipped = 0, charts = 0;
 
@@ -173,14 +182,20 @@ public static class PlayerLevel
                             if (bar <= 0 || bar >= kv.Key.Length - 1) continue;
                             plays += kv.Value;
                             double b = BaseOf(kv.Key.Substring(bar + 1));
-                            if (b <= 0) { skipped += kv.Value; continue; }
+                            if (b <= 0)
+                            {
+                                skipped += kv.Value;
+                                continue;
+                            }
+
                             sum += kv.Value * b;
                         }
                     }
 
                     int validInAll = 0;
                     for (int i = 0; i < n; i++)
-                        if (BaseOf(all[i].Difficulty.ToString()) > 0) validInAll++;
+                        if (BaseOf(all[i].Difficulty.ToString()) > 0)
+                            validInAll++;
 
                     if (n > 0 && plays == 0 && validInAll > 0)
                     {
@@ -199,6 +214,7 @@ public static class PlayerLevel
                         ulong ts = all[i].SecondsSinceEpochUtc;
                         if (ts > maxTs) maxTs = ts;
                     }
+
                     _lastTs = maxTs;
 
                     _seen = Math.Max(n, highWater);
@@ -208,8 +224,8 @@ public static class PlayerLevel
 
                     int lv = LevelOf(_xp);
                     seedLog = $"[等级] 首次折算：{charts} 张谱 / {plays} 次 → {gain} XP"
-                            + (skipped > 0 ? $"（认不出难度的 {skipped} 次已跳过）" : "")
-                            + $" ⇒ 总 {_xp} XP（Lv.{lv}）";
+                              + (skipped > 0 ? $"（认不出难度的 {skipped} 次已跳过）" : "")
+                              + $" ⇒ 总 {_xp} XP（Lv.{lv}）";
                 }
                 else
                 {
@@ -217,7 +233,6 @@ public static class PlayerLevel
 
                     if (n < _seen)
                     {
-
                         Plugin.Logger.LogWarning(
                             $"[等级] history 变小了（{_seen} → {n}）—— 已重新对齐，XP 一个不改");
                         _seen = n;
@@ -253,7 +268,6 @@ public static class PlayerLevel
         }
         catch (Exception ex)
         {
-
             Plugin.Logger.LogWarning($"[等级] 入账失败（这一次跳过）: {ex.Message}");
             return;
         }
@@ -268,7 +282,7 @@ public static class PlayerLevel
         return v > XpMax ? XpMax : v;
     }
 
-        public static void Save(bool force = false)
+    public static void Save(bool force = false)
     {
         lock (_lock)
         {
@@ -279,7 +293,8 @@ public static class PlayerLevel
             {
                 var sb = new StringBuilder();
                 sb.AppendLine("{");
-                sb.AppendLine("  \"_字段\": \"xp = 总经验；seen = 已经入过账的 history 条数；ts = 最后入账那条的时间戳（SecondsSinceEpochUtc）；seeded = 是否已按旧游玩次数折算过。删掉整个文件 = 下次启动重新折算。\",");
+                sb.AppendLine(
+                    "  \"_字段\": \"xp = 总经验；seen = 已经入过账的 history 条数；ts = 最后入账那条的时间戳（SecondsSinceEpochUtc）；seeded = 是否已按旧游玩次数折算过。删掉整个文件 = 下次启动重新折算。\",");
                 sb.AppendLine("  \"v\": 1,");
                 sb.AppendLine($"  \"xp\": {_xp},");
                 sb.AppendLine($"  \"seen\": {_seen},");
@@ -308,26 +323,30 @@ public static class PlayerLevel
         long xp = 0;
         bool hasXp = false;
         if (root.TryGetProperty("xp", out var xv) && xv.ValueKind == JsonValueKind.Number
-            && xv.TryGetInt64(out long x)) { hasXp = true; xp = x; }
+                                                  && xv.TryGetInt64(out long x))
+        {
+            hasXp = true;
+            xp = x;
+        }
 
         int seen = 0;
         bool hasSeen = root.TryGetProperty("seen", out var sv) && sv.ValueKind == JsonValueKind.Number
-            && sv.TryGetInt32(out seen) && seen >= 0;
+                                                               && sv.TryGetInt32(out seen) && seen >= 0;
 
         ulong ts = 0;
         bool hasTs = root.TryGetProperty("ts", out var tv) && tv.ValueKind == JsonValueKind.Number
-            && tv.TryGetUInt64(out ts);
+                                                           && tv.TryGetUInt64(out ts);
 
         bool seeded = root.TryGetProperty("seeded", out var dv)
-            && dv.ValueKind == JsonValueKind.True;
+                      && dv.ValueKind == JsonValueKind.True;
 
         if (seeded && !hasXp)
         {
-
             Plugin.Logger.LogWarning("[等级] level.json 缺 xp 字段 —— 按首次折算走");
             lock (_lock) ResetLocked();
             return;
         }
+
         if (!hasSeen) seen = 0;
         if (!hasTs) ts = 0;
 

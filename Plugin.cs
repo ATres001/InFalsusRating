@@ -78,19 +78,25 @@ public class Plugin : BasePlugin
         TaskConfig.Load();
         TaskProgress.Load();
 
+        PlayCounts.Init();
         PlayCounts.Load();
 
+        PlayerLevel.Init();
         PlayerLevel.Load();
 
+        PlayTimes.Init();
         PlayTimes.Load();
 
+        TaskMarks.Init();
         TaskMarks.Load();
 
+        ExamFails.Init();
         ExamFails.Load();
         LoadPlayerName();
 
         Settings.Load();
 
+        PlayerSkin.Init();
         PlayerSkin.Load();
         Win32Overlay.PlayerPanel.Start();
 
@@ -104,6 +110,7 @@ public class Plugin : BasePlugin
         harmony.PatchAll(typeof(Patch_NH_VNA));
         harmony.PatchAll(typeof(Patch_UIManagerUpdate));
         harmony.PatchAll(typeof(Patch_GameSceneExit));
+        harmony.PatchAll(typeof(Patch_PauseQuit));
 
         if (Patch_GameSceneExit.TargetMethod() == null)
             Logger.LogError("[Exam] 挂不上 GameScene._Sk —— 玩家自己退出/重开**不会**被判失败");
@@ -113,11 +120,11 @@ public class Plugin : BasePlugin
         Logger.LogInfo("[Plugin] Harmony patch 已挂载");
     }
 
-        public static string AssetDir => Path.Combine(Paths.ConfigPath, "InFalsusRating", "assets");
+        public static string AssetDir => Path.Combine(Settings.ConfigRoot, "assets");
 
         public static string AssetPath(string rel)
     {
-        string root = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+        string root = Settings.ConfigRoot;
         string alt = Path.Combine(root, "assets", rel);
         if (File.Exists(alt) || Directory.Exists(alt)) return alt;
         return Path.Combine(root, rel);
@@ -127,7 +134,7 @@ public class Plugin : BasePlugin
     {
         try
         {
-            string configDir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string configDir = Settings.ConfigRoot;
             Directory.CreateDirectory(configDir);
 
             string[] sourceDirs = new[]
@@ -180,7 +187,7 @@ public class Plugin : BasePlugin
     {
         try
         {
-            string root = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string root = Settings.ConfigRoot;
             string assets = Path.Combine(root, "assets");
 
             CleanLegacyDir(root, "GUI", Path.Combine(assets, "GUI"));
@@ -229,7 +236,7 @@ public class Plugin : BasePlugin
     {
         try
         {
-            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string dir = Settings.ConfigRoot;
             Directory.CreateDirectory(dir);
             string file = Path.Combine(dir, "name.txt");
 
@@ -266,7 +273,7 @@ public class Plugin : BasePlugin
         if (name.Length == 0) return false;
         try
         {
-            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string dir = Settings.ConfigRoot;
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, "name.txt"), name);
             PlayerName = name;
@@ -284,7 +291,7 @@ public class Plugin : BasePlugin
     {
         try
         {
-            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string dir = Settings.ConfigRoot;
             Directory.CreateDirectory(dir);
             string done = Path.Combine(dir, "release_cleanup.done");
             if (File.Exists(done)) return;
@@ -474,7 +481,6 @@ public class Plugin : BasePlugin
     {
         try
         {
-
             string dir = Settings.ExportRoot;
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, "b30.png");

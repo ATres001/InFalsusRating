@@ -1,82 +1,67 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using BepInEx;
-using BepInEx.Unity.IL2CPP;
-using BepInEx.Logging;
-using HarmonyLib;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
-using ifapp.Game.Data;
 
 namespace InFalsusRating;
 
 public static class TaskConfig
 {
-        public static int FailDive = -15;
+    public static int FailDive = -15;
 
-        public static HpConfig Hp = new HpConfig();
+    public static HpConfig Hp = new HpConfig();
 
-        public static int SongsPerRun = 4;
+    public static int SongsPerRun = 4;
 
-        public static int OpenTiers = 6;
+    public static int OpenTiers = 6;
 
-        public static List<Challenge> Tiers = new List<Challenge>();
+    public static List<Challenge> Tiers = new List<Challenge>();
 
-        public static List<Challenge> Themes = new List<Challenge>();
+    public static List<Challenge> Themes = new List<Challenge>();
 
-        public static List<Challenge> Chapters = new List<Challenge>();
+    public static List<Challenge> Chapters = new List<Challenge>();
 
-        public static List<Challenge> PlainThemes = new List<Challenge>();
+    public static List<Challenge> PlainThemes = new List<Challenge>();
 
-    public static string Dir => Path.Combine(Paths.ConfigPath, "InFalsusRating");
-    public static string ConfigFile => Path.Combine(Dir, "tasks.json");
-    public static string ResultFile => Path.Combine(Dir, "task_result.json");
+    public static string ConfigFile => Path.Combine(Settings.ConfigRoot, "tasks.json");
+    public static string ResultFile => Path.Combine(Settings.ConfigRoot, "task_result.json");
 
-        public static string ExtraFile => Path.Combine(Dir, "tasks_themes.json");
+    public static string ExtraFile => Path.Combine(Settings.ConfigRoot, "tasks_themes.json");
 
-        static List<Challenge> _themesFile = new List<Challenge>();
+    static List<Challenge> _themesFile = new List<Challenge>();
 
-        static List<Challenge> _themesExtra = new List<Challenge>();
+    static List<Challenge> _themesExtra = new List<Challenge>();
 
-        static List<Challenge> _tiersFile = new List<Challenge>();
+    static List<Challenge> _tiersFile = new List<Challenge>();
 
-        static List<Challenge> _ranksExtra = new List<Challenge>();
+    static List<Challenge> _ranksExtra = new List<Challenge>();
 
-        public static readonly string[] DiffOrder = { "Minimal", "Evolved", "Ultimate", "Forbidden" };
+    public static readonly string[] DiffOrder = { "Minimal", "Evolved", "Ultimate", "Forbidden" };
 
-        public const string CatChapter = "chapter";
+    public const string CatChapter = "chapter";
 
-        public const string TagRank = "rank";
+    public const string TagRank = "rank";
 
-        public const string TagPlain = "";
+    public const string TagPlain = "";
 
-        public class CatDef
+    public class CatDef
     {
-                public string Key = "";
-                public string Label = "";
+        public string Key = "";
+        public string Label = "";
     }
 
-        public static List<CatDef> Cats = new List<CatDef>();
+    public static List<CatDef> Cats = new List<CatDef>();
 
-        public static string CatsFile => Path.Combine(Dir, "tasks_cats.json");
+    public static string CatsFile => Path.Combine(Settings.ConfigRoot, "tasks_cats.json");
 
     static List<CatDef> _catsFile = new List<CatDef>();
-        static Dictionary<string, string> _catOf = new Dictionary<string, string>();
+    static Dictionary<string, string> _catOf = new Dictionary<string, string>();
 
-        static Dictionary<string, List<string>> _orderOf = new Dictionary<string, List<string>>();
+    static Dictionary<string, List<string>> _orderOf = new Dictionary<string, List<string>>();
 
-        static Dictionary<string, List<Challenge>> _byCat = new Dictionary<string, List<Challenge>>();
+    static Dictionary<string, List<Challenge>> _byCat = new Dictionary<string, List<Challenge>>();
 
-        static readonly List<Challenge> NoChallenges = new List<Challenge>();
+    static readonly List<Challenge> NoChallenges = new List<Challenge>();
 
-        public static string TagOf(Challenge c)
+    public static string TagOf(Challenge c)
     {
         if (c == null) return TagPlain;
         if (_catOf.TryGetValue(c.Key, out var t)) return t ?? TagPlain;
@@ -84,14 +69,14 @@ public static class TaskConfig
         return c.Kind == "rank" ? TagRank : TagPlain;
     }
 
-        public static List<Challenge> Group(string tag)
+    public static List<Challenge> Group(string tag)
     {
         if (tag == null) tag = TagPlain;
         if (tag == "theme") tag = TagPlain;
         return _byCat.TryGetValue(tag, out var l) ? l : NoChallenges;
     }
 
-        public static void SetCat(string key, string tag)
+    public static void SetCat(string key, string tag)
     {
         if (string.IsNullOrEmpty(key)) return;
         tag = SanitizeArt(tag ?? "");
@@ -99,7 +84,7 @@ public static class TaskConfig
         var old = FindAny(key);
         if (old != null && old.Cat.Length > 0 && old.Cat != tag)
             Plugin.Logger.LogWarning($"[Exam] {key}「{old.Name}」原本写着 \"cat\": \"{old.Cat}\"，"
-                + $"现在被面板改到「{tag}」—— tasks.json 里那行没动（插件不回写它），以面板这份为准");
+                                     + $"现在被面板改到「{tag}」—— tasks.json 里那行没动（插件不回写它），以面板这份为准");
 
         var next = new Dictionary<string, string>(_catOf);
         next[key] = tag;
@@ -120,6 +105,7 @@ public static class TaskConfig
                 l.Remove(key);
                 no[kv.Key] = l;
             }
+
             _orderOf = no;
         }
 
@@ -128,7 +114,7 @@ public static class TaskConfig
         Plugin.Logger.LogWarning($"[Debug] {key}「{(old != null ? old.Name : "?")}」归到分类「{tag}」→ {CatsFile}");
     }
 
-        public static bool AddCat(string label)
+    public static bool AddCat(string label)
     {
         string key = SanitizeArt((label ?? "").Trim());
         if (key.Length == 0) return false;
@@ -142,7 +128,7 @@ public static class TaskConfig
         return true;
     }
 
-        public static bool RenameCat(string key, string label)
+    public static bool RenameCat(string key, string label)
     {
         if (string.IsNullOrEmpty(key)) return false;
         label = (label ?? "").Trim();
@@ -158,7 +144,7 @@ public static class TaskConfig
         return true;
     }
 
-        public static bool RemoveCat(string key)
+    public static bool RemoveCat(string key)
     {
         if (string.IsNullOrEmpty(key) || key == TagRank) return false;
         int at = _catsFile.FindIndex(c => c != null && c.Key == key);
@@ -172,10 +158,12 @@ public static class TaskConfig
         return true;
     }
 
-        public static bool MoveCat(string key, int dir)
+    public static bool MoveCat(string key, int dir)
     {
         var keys = new List<string>();
-        foreach (var c in Cats) if (c != null) keys.Add(c.Key);
+        foreach (var c in Cats)
+            if (c != null)
+                keys.Add(c.Key);
 
         int i = keys.IndexOf(key);
         if (i < 0) return false;
@@ -187,8 +175,12 @@ public static class TaskConfig
 
         var next = new List<CatDef>();
         foreach (var k in keys)
-            foreach (var c in Cats)
-                if (c != null && c.Key == k) { next.Add(new CatDef { Key = c.Key, Label = c.Label }); break; }
+        foreach (var c in Cats)
+            if (c != null && c.Key == k)
+            {
+                next.Add(new CatDef { Key = c.Key, Label = c.Label });
+                break;
+            }
 
         _catsFile = next;
         SaveCats();
@@ -196,7 +188,7 @@ public static class TaskConfig
         return true;
     }
 
-        public static bool MoveInCat(string key, int dir)
+    public static bool MoveInCat(string key, int dir)
     {
         var c = FindAny(key);
         if (c == null) return false;
@@ -205,7 +197,13 @@ public static class TaskConfig
         if (list.Count < 2) return false;
 
         int i = -1;
-        for (int k = 0; k < list.Count; k++) if (list[k].Key == key) { i = k; break; }
+        for (int k = 0; k < list.Count; k++)
+            if (list[k].Key == key)
+            {
+                i = k;
+                break;
+            }
+
         if (i < 0) return false;
         int j = i + dir;
         if (j < 0 || j >= list.Count) return false;
@@ -224,27 +222,35 @@ public static class TaskConfig
         return true;
     }
 
-        public static Challenge FindAny(string key)
+    public static Challenge FindAny(string key)
     {
         if (string.IsNullOrEmpty(key)) return null;
         var t = Tiers;
-        if (t != null) foreach (var c in t) if (c.Key == key) return c;
+        if (t != null)
+            foreach (var c in t)
+                if (c.Key == key)
+                    return c;
         var m = Themes;
-        if (m != null) foreach (var c in m) if (c.Key == key) return c;
+        if (m != null)
+            foreach (var c in m)
+                if (c.Key == key)
+                    return c;
         return null;
     }
 
     static bool HasCat(string key)
     {
-        foreach (var c in Cats) if (c != null && c.Key == key) return true;
+        foreach (var c in Cats)
+            if (c != null && c.Key == key)
+                return true;
         return false;
     }
 
-        public static void SaveCats()
+    public static void SaveCats()
     {
         try
         {
-            Directory.CreateDirectory(Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             var cats = _catsFile;
             var catOf = _catOf;
             var order = _orderOf;
@@ -265,8 +271,9 @@ public static class TaskConfig
                 var c = cats[i];
                 if (c == null) continue;
                 sb.Append("    { \"key\": \"").Append(Esc(c.Key)).Append("\", \"label\": \"")
-                  .Append(Esc(c.Label)).Append("\" }").AppendLine(i == cats.Count - 1 ? "" : ",");
+                    .Append(Esc(c.Label)).Append("\" }").AppendLine(i == cats.Count - 1 ? "" : ",");
             }
+
             sb.AppendLine("  ],");
 
             sb.AppendLine("  \"cat\": {");
@@ -275,12 +282,14 @@ public static class TaskConfig
             {
                 n++;
                 sb.Append($"    \"{Esc(kv.Key)}\": \"{Esc(kv.Value)}\"")
-                  .AppendLine(n == total ? "" : ",");
+                    .AppendLine(n == total ? "" : ",");
             }
+
             sb.AppendLine("  },");
 
             sb.AppendLine("  \"order\": {");
-            n = 0; total = order.Count;
+            n = 0;
+            total = order.Count;
             foreach (var kv in order)
             {
                 n++;
@@ -289,6 +298,7 @@ public static class TaskConfig
                     sb.Append(i > 0 ? ", " : "").Append('"').Append(Esc(kv.Value[i])).Append('"');
                 sb.Append(']').AppendLine(n == total ? "" : ",");
             }
+
             sb.AppendLine("  }");
             sb.AppendLine("}");
 
@@ -300,7 +310,7 @@ public static class TaskConfig
         }
     }
 
-        static void LoadCats()
+    static void LoadCats()
     {
         var cats = new List<CatDef>();
         var catOf = new Dictionary<string, string>();
@@ -322,7 +332,8 @@ public static class TaskConfig
                             {
                                 Key = SanitizeArt((kEl.GetString() ?? "").Trim()),
                                 Label = el.TryGetProperty("label", out var lEl) && lEl.ValueKind == JsonValueKind.String
-                                    ? (lEl.GetString() ?? "").Trim() : "",
+                                    ? (lEl.GetString() ?? "").Trim()
+                                    : "",
                             };
                             cats.Add(d);
                         }
@@ -343,6 +354,7 @@ public static class TaskConfig
                                     var s = (el.GetString() ?? "").Trim();
                                     if (s.Length > 0) l.Add(s);
                                 }
+
                             order[p.Name] = l;
                         }
                 }
@@ -351,7 +363,9 @@ public static class TaskConfig
         catch (Exception ex)
         {
             Plugin.Logger.LogWarning($"[Exam] tasks_cats.json 读取失败: {ex.Message}（分类按默认，不影响 tasks.json）");
-            cats.Clear(); catOf.Clear(); order.Clear();
+            cats.Clear();
+            catOf.Clear();
+            order.Clear();
         }
 
         _catsFile = cats;
@@ -359,7 +373,7 @@ public static class TaskConfig
         _orderOf = order;
         if (cats.Count > 0 || catOf.Count > 0)
             Plugin.Logger.LogInfo($"[Exam] tasks_cats.json：{cats.Count} 个自定义分类、"
-                + $"{catOf.Count} 个归属覆盖、{order.Count} 份顺序表");
+                                  + $"{catOf.Count} 个归属覆盖、{order.Count} 份顺序表");
     }
 
     static bool _loaded = false;
@@ -375,6 +389,7 @@ public static class TaskConfig
     {
         if (_loaded) return;
         _loaded = true;
+        ExternalSaveManager.RegisterFile(ResultFile, () => {});
         var tiers = new List<Challenge>();
         var themes = new List<Challenge>();
 
@@ -429,11 +444,11 @@ public static class TaskConfig
             }
 
             Plugin.Logger.LogInfo($"[Exam] 课题载入：段位 {tiers.Count} 段（开放到 {OpenTiers} 段）、"
-                + $"主题 {themes.Count} 个（另有面板加的 {_themesExtra.Count} 个主题 / {_ranksExtra.Count} 段），"
-                + $"每个课题默认 {SongsPerRun} 首，dive 报警线 {FailDive}（只记日志）");
+                                  + $"主题 {themes.Count} 个（另有面板加的 {_themesExtra.Count} 个主题 / {_ranksExtra.Count} 段），"
+                                  + $"每个课题默认 {SongsPerRun} 首，dive 报警线 {FailDive}（只记日志）");
             Plugin.Logger.LogInfo("[Exam] 段位评级闸："
-                + string.Join(" / ", tiers.ConvertAll(t => $"{t.Name} {FmtRating(t.MinRating)}"))
-                + "（0.0 = 不看评级）");
+                                  + string.Join(" / ", tiers.ConvertAll(t => $"{t.Name} {FmtRating(t.MinRating)}"))
+                                  + "（0.0 = 不看评级）");
         }
         catch (Exception ex)
         {
@@ -441,12 +456,11 @@ public static class TaskConfig
         }
         finally
         {
-
             RebuildAll();
         }
     }
 
-        static void LoadExtras()
+    static void LoadExtras()
     {
         var themes = new List<Challenge>();
         var ranks = new List<Challenge>();
@@ -463,6 +477,7 @@ public static class TaskConfig
                     if (root.TryGetProperty("themes", out var th)) ParseChallenges(th, "theme", themes);
                     if (root.TryGetProperty("ranks", out var rk)) ParseChallenges(rk, "rank", ranks);
                 }
+
                 Plugin.Logger.LogInfo($"[Exam] tasks_themes.json（面板加的 / 改过的）：主题 {themes.Count} 个、段位 {ranks.Count} 段");
             }
         }
@@ -472,11 +487,12 @@ public static class TaskConfig
             themes.Clear();
             ranks.Clear();
         }
+
         _themesExtra = themes;
         _ranksExtra = ranks;
     }
 
-        static List<Challenge> MergeThemes(List<Challenge> fromFile, List<Challenge> extra, string what)
+    static List<Challenge> MergeThemes(List<Challenge> fromFile, List<Challenge> extra, string what)
     {
         var res = new List<Challenge>();
         if (fromFile != null) res.AddRange(fromFile);
@@ -488,7 +504,7 @@ public static class TaskConfig
                 if (at >= 0)
                 {
                     Plugin.Logger.LogWarning($"[Exam] {what} {c.Key}「{res[at].Name}」被面板改过，"
-                        + $"以 tasks_themes.json 的「{c.Name}」为准");
+                                             + $"以 tasks_themes.json 的「{c.Name}」为准");
                     res[at] = c;
                 }
                 else res.Add(c);
@@ -498,15 +514,19 @@ public static class TaskConfig
         return res;
     }
 
-        public static int NextThemeN()
+    public static int NextThemeN()
     {
         int max = 0;
-        foreach (var c in _themesFile) if (c.N > max) max = c.N;
-        foreach (var c in _themesExtra) if (c.N > max) max = c.N;
+        foreach (var c in _themesFile)
+            if (c.N > max)
+                max = c.N;
+        foreach (var c in _themesExtra)
+            if (c.N > max)
+                max = c.N;
         return max + 1;
     }
 
-        public static void AddTheme(Challenge c)
+    public static void AddTheme(Challenge c)
     {
         if (c == null) return;
 
@@ -525,7 +545,7 @@ public static class TaskConfig
         Plugin.Logger.LogWarning($"[Debug] 新主题：{c.Key}「{c.Name}」{Describe(c)} → {ExtraFile}");
     }
 
-        public static void ReplaceChallenge(Challenge c)
+    public static void ReplaceChallenge(Challenge c)
     {
         if (c == null || c.Key.Length == 0) return;
         if (c.Songs.Count == 0 && !c.IsPool)
@@ -542,17 +562,18 @@ public static class TaskConfig
         bool existed = at >= 0;
         if (existed) next[at] = c;
         else next.Add(c);
-        if (rank) _ranksExtra = next; else _themesExtra = next;
+        if (rank) _ranksExtra = next;
+        else _themesExtra = next;
         SaveExtraThemes();
         RebuildAll();
 
         Plugin.Logger.LogWarning($"[Debug] {(existed ? "改" : "写")}{(rank ? "段位" : "主题")}："
-            + $"{c.Key}「{c.Name}」{Describe(c)}"
-            + (fromExtra ? "" : " · ⚠ 原件在 tasks.json 里，现在被这份覆盖")
-            + $" → {ExtraFile}");
+                                 + $"{c.Key}「{c.Name}」{Describe(c)}"
+                                 + (fromExtra ? "" : " · ⚠ 原件在 tasks.json 里，现在被这份覆盖")
+                                 + $" → {ExtraFile}");
     }
 
-        public static string Describe(Challenge c)
+    public static string Describe(Challenge c)
     {
         if (c == null) return "";
         return c.IsPool
@@ -560,11 +581,15 @@ public static class TaskConfig
             : $"{c.Songs.Count} 首（默认 {(c.Songs.Count > 0 ? c.Songs[0].Diff : "?")}）";
     }
 
-        public static bool IsFromExtra(string key)
+    public static bool IsFromExtra(string key)
     {
         if (key == null || key.Length == 0) return false;
-        foreach (var c in _themesExtra) if (c.Key == key) return true;
-        foreach (var c in _ranksExtra) if (c.Key == key) return true;
+        foreach (var c in _themesExtra)
+            if (c.Key == key)
+                return true;
+        foreach (var c in _ranksExtra)
+            if (c.Key == key)
+                return true;
         return false;
     }
 
@@ -572,7 +597,7 @@ public static class TaskConfig
     {
         try
         {
-            Directory.CreateDirectory(Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             var themes = _themesExtra;
             var ranks = _ranksExtra;
             var sb = new StringBuilder();
@@ -599,10 +624,9 @@ public static class TaskConfig
         }
     }
 
-        static void RebuildAll()
+    static void RebuildAll()
     {
-
-        Tiers  = MergeThemes(_tiersFile,  _ranksExtra,  "段位");
+        Tiers = MergeThemes(_tiersFile, _ranksExtra, "段位");
         Themes = MergeThemes(_themesFile, _themesExtra, "主题");
 
         var by = new Dictionary<string, List<Challenge>>();
@@ -625,12 +649,17 @@ public static class TaskConfig
         {
             if (c == null) continue;
             string tag = TagOf(c);
-            if (!by.TryGetValue(tag, out var l)) { l = new List<Challenge>(); by[tag] = l; }
+            if (!by.TryGetValue(tag, out var l))
+            {
+                l = new List<Challenge>();
+                by[tag] = l;
+            }
+
             if (!l.Contains(c)) l.Add(c);
         }
     }
 
-        static void SortInPlace(List<Challenge> list, string tag)
+    static void SortInPlace(List<Challenge> list, string tag)
     {
         if (list.Count < 2) return;
         if (!_orderOf.TryGetValue(tag, out var keys) || keys == null || keys.Count == 0) return;
@@ -650,7 +679,7 @@ public static class TaskConfig
         });
     }
 
-        static List<CatDef> FixCats(List<CatDef> fromFile, Dictionary<string, List<Challenge>> by)
+    static List<CatDef> FixCats(List<CatDef> fromFile, Dictionary<string, List<Challenge>> by)
     {
         var res = new List<CatDef>();
         var seen = new HashSet<string>();
@@ -664,24 +693,27 @@ public static class TaskConfig
 
         var src = fromFile ?? new List<CatDef>();
 
-        if (!src.Exists(c => c != null && c.Key == TagRank))  Add(TagRank, "");
+        if (!src.Exists(c => c != null && c.Key == TagRank)) Add(TagRank, "");
         if (!src.Exists(c => c != null && c.Key == TagPlain)) Add(TagPlain, "");
 
-        foreach (var c in src) if (c != null) Add(c.Key, c.Label ?? "");
+        foreach (var c in src)
+            if (c != null)
+                Add(c.Key, c.Label ?? "");
         foreach (var kv in by) Add(kv.Key, "");
 
         return res;
     }
 
-        static string LabelIn(List<CatDef> fromFile, string key)
+    static string LabelIn(List<CatDef> fromFile, string key)
     {
         if (fromFile != null)
             foreach (var c in fromFile)
-                if (c != null && c.Key == key && !string.IsNullOrEmpty(c.Label)) return c.Label;
+                if (c != null && c.Key == key && !string.IsNullOrEmpty(c.Label))
+                    return c.Label;
         return "";
     }
 
-        static string DefaultCatLabel(string key)
+    static string DefaultCatLabel(string key)
     {
         if (key == TagRank) return "段位";
         if (key == TagPlain) return "主题挑战";
@@ -689,7 +721,7 @@ public static class TaskConfig
         return key;
     }
 
-        public static void Reload()
+    public static void Reload()
     {
         _loaded = false;
         _needSeed = false;
@@ -697,7 +729,7 @@ public static class TaskConfig
         Plugin.Logger.LogInfo("[Exam] tasks.json 已重新载入");
     }
 
-        public static string SanitizeArt(string s)
+    public static string SanitizeArt(string s)
     {
         if (string.IsNullOrEmpty(s)) return "";
         var sb = new StringBuilder(24);
@@ -706,10 +738,11 @@ public static class TaskConfig
             if (char.IsLetterOrDigit(ch) || ch == '_' || ch == '-') sb.Append(char.ToLowerInvariant(ch));
             if (sb.Length >= 24) break;
         }
+
         return sb.ToString();
     }
 
-        static void ParseChallenges(JsonElement arr, string kind, List<Challenge> into)
+    static void ParseChallenges(JsonElement arr, string kind, List<Challenge> into)
     {
         if (arr.ValueKind != JsonValueKind.Array)
         {
@@ -802,46 +835,66 @@ public static class TaskConfig
         into.Sort((a, b) => a.N.CompareTo(b.N));
     }
 
-        public static HpConfig ParseHp(JsonElement parent)
+    public static HpConfig ParseHp(JsonElement parent)
     {
         if (parent.ValueKind != JsonValueKind.Object) return null;
         if (!parent.TryGetProperty("hp", out var el) || el.ValueKind != JsonValueKind.Object) return null;
 
         var h = new HpConfig();
-        if (el.TryGetProperty("max", out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i)) h.Max = i;
+        if (el.TryGetProperty("max", out var v) && v.ValueKind == JsonValueKind.Number &&
+            v.TryGetInt32(out int i)) h.Max = i;
         if (el.TryGetProperty("min", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i)) h.Min = i;
         if (el.TryGetProperty("pass", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i)) h.Pass = i;
-        if (el.TryGetProperty("perSong", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i)) h.PerSong = i;
+        if (el.TryGetProperty("perSong", out v) && v.ValueKind == JsonValueKind.Number &&
+            v.TryGetInt32(out i)) h.PerSong = i;
         if (el.TryGetProperty("regen", out v))
         {
             if (v.ValueKind == JsonValueKind.True) h.Regen = true;
             else if (v.ValueKind == JsonValueKind.False) h.Regen = false;
         }
+
         if (el.TryGetProperty("fatal", out v))
         {
             if (v.ValueKind == JsonValueKind.True) h.Fatal = true;
             else if (v.ValueKind == JsonValueKind.False) h.Fatal = false;
         }
 
-        if (el.TryGetProperty("nearLoss", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i)) h.NearLoss = i;
-        if (el.TryGetProperty("breakLoss", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i)) h.BreakLoss = i;
-        if (el.TryGetProperty("regenNeed", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i)) h.RegenNeed = i;
+        if (el.TryGetProperty("nearLoss", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i))
+            h.NearLoss = i;
+        if (el.TryGetProperty("breakLoss", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i))
+            h.BreakLoss = i;
+        if (el.TryGetProperty("regenNeed", out v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out i))
+            h.RegenNeed = i;
         return h;
     }
 
-        static void ParseSongs(JsonElement arr, List<TaskSong> into)
+    static void ParseSongs(JsonElement arr, List<TaskSong> into)
     {
         if (arr.ValueKind != JsonValueKind.Array) return;
 
         foreach (var s in arr.EnumerateArray())
         {
             if (s.ValueKind != JsonValueKind.Object) continue;
-            if (!s.TryGetProperty("id", out var idEl)) { Plugin.Logger.LogWarning("[Exam] 有一条曲目没有 id，跳过"); continue; }
+            if (!s.TryGetProperty("id", out var idEl))
+            {
+                Plugin.Logger.LogWarning("[Exam] 有一条曲目没有 id，跳过");
+                continue;
+            }
 
             int id;
-            if (idEl.ValueKind == JsonValueKind.Number) { if (!idEl.TryGetInt32(out id)) continue; }
-            else if (idEl.ValueKind == JsonValueKind.String) { if (!int.TryParse(idEl.GetString(), out id)) continue; }
-            else { Plugin.Logger.LogWarning("[Exam] 有一条曲目的 id 既不是数字也不是字符串，跳过"); continue; }
+            if (idEl.ValueKind == JsonValueKind.Number)
+            {
+                if (!idEl.TryGetInt32(out id)) continue;
+            }
+            else if (idEl.ValueKind == JsonValueKind.String)
+            {
+                if (!int.TryParse(idEl.GetString(), out id)) continue;
+            }
+            else
+            {
+                Plugin.Logger.LogWarning("[Exam] 有一条曲目的 id 既不是数字也不是字符串，跳过");
+                continue;
+            }
 
             string diff = "Forbidden";
             if (s.TryGetProperty("diff", out var dEl) && dEl.ValueKind == JsonValueKind.String)
@@ -849,11 +902,12 @@ public static class TaskConfig
                 string ds = dEl.GetString();
                 if (!string.IsNullOrWhiteSpace(ds)) diff = ds.Trim();
             }
+
             into.Add(new TaskSong { Id = id, Diff = diff });
         }
     }
 
-        public static string WhyNotRunnable(Challenge c)
+    public static string WhyNotRunnable(Challenge c)
     {
         if (c == null) return "没有选中课题";
         if (c.Count <= 0) return "这个课题的 count 是 0，没法打";
@@ -862,16 +916,17 @@ public static class TaskConfig
             int n = PoolSize(c);
             if (n < c.Count)
             {
-
                 int raw = PoolSizeRaw(c);
                 if (raw > n && SongUnlock.Known)
                     return $"{PoolDiffText(c)} 定数 {c.PoolMin}-{c.PoolMax} 共 {raw} 张谱面，"
-                        + $"其中 {raw - n} 张你还没在游戏里解锁，能抽的只剩 {n} 张 —— 不够抽 {c.Count} 首"
-                        + $"（当前已解锁 {SongUnlock.UnlockedCharts} 张，先去多解锁一些歌）";
+                           + $"其中 {raw - n} 张你还没在游戏里解锁，能抽的只剩 {n} 张 —— 不够抽 {c.Count} 首"
+                           + $"（当前已解锁 {SongUnlock.UnlockedCharts} 张，先去多解锁一些歌）";
                 return $"{PoolDiffText(c)} 定数 {c.PoolMin}-{c.PoolMax} 只找到 {n} 张谱面，不够抽 {c.Count} 首";
             }
+
             return "";
         }
+
         if (c.Songs.Count < c.Count) return $"曲单只有 {c.Songs.Count} 首，不够打 {c.Count} 首";
 
         if (c.Switchable)
@@ -879,12 +934,14 @@ public static class TaskConfig
             string d = DiffFor(c);
             if (d.Length == 0) return "这个主题挑不出可打的难度";
             foreach (var s in c.Songs)
-                if (!ConstTable.HasChart(s.Id, d)) return $"曲目 {s.Id} 没有 {d} 难度";
+                if (!ConstTable.HasChart(s.Id, d))
+                    return $"曲目 {s.Id} 没有 {d} 难度";
         }
+
         return "";
     }
 
-        public static HpRules HpOf(Challenge c)
+    public static HpRules HpOf(Challenge c)
     {
         var r = new HpRules();
 
@@ -893,9 +950,8 @@ public static class TaskConfig
         return Clamp(r);
     }
 
-        static HpRules Clamp(HpRules r)
+    static HpRules Clamp(HpRules r)
     {
-
         if (r.Min >= r.Max) r.Min = r.Max - 1;
 
         if (r.RegenNeed <= 0) r.RegenNeed = 1;
@@ -918,7 +974,7 @@ public static class TaskConfig
         if (h.RegenNeed.HasValue) r.RegenNeed = h.RegenNeed.Value;
     }
 
-        public static bool SetHp(string key, HpConfig hp)
+    public static bool SetHp(string key, HpConfig hp)
     {
         var c = FindAny(key);
         if (c == null) return false;
@@ -937,19 +993,20 @@ public static class TaskConfig
         int at = next.FindIndex(x => x.Key == copy.Key);
         if (at >= 0) next[at] = copy;
         else next.Add(copy);
-        if (rank) _ranksExtra = next; else _themesExtra = next;
+        if (rank) _ranksExtra = next;
+        else _themesExtra = next;
         SaveExtraThemes();
         RebuildAll();
 
         Plugin.Logger.LogWarning($"[Debug] 改血量：{copy.Key}「{copy.Name}」→ "
-            + (hp == null ? "清掉覆盖（跟全局）" : HpJson(hp))
-            + $" → {ExtraFile}（同键覆盖版，tasks.json 不动"
-            + (IsFromExtra(key) ? "" : "；这个课题是 tasks.json 里的，下次合并会报一条「被面板改过」的 warning，正常")
-            + "）");
+                                 + (hp == null ? "清掉覆盖（跟全局）" : HpJson(hp))
+                                 + $" → {ExtraFile}（同键覆盖版，tasks.json 不动"
+                                 + (IsFromExtra(key) ? "" : "；这个课题是 tasks.json 里的，下次合并会报一条「被面板改过」的 warning，正常")
+                                 + "）");
         return true;
     }
 
-        public static Challenge Clone(Challenge c)
+    public static Challenge Clone(Challenge c)
     {
         if (c == null) return null;
         var n = new Challenge
@@ -969,30 +1026,31 @@ public static class TaskConfig
         return n;
     }
 
-        public static int PoolSize(Challenge c)
+    public static int PoolSize(Challenge c)
         => c != null && c.IsPool ? ConstTable.InRange(c.PoolDiff, c.PoolMin, c.PoolMax).Count : 0;
 
-        public static int PoolSizeRaw(Challenge c)
+    public static int PoolSizeRaw(Challenge c)
         => c != null && c.IsPool ? ConstTable.InRange(c.PoolDiff, c.PoolMin, c.PoolMax, true).Count : 0;
 
-        public static string PoolDiffText(Challenge c)
+    public static string PoolDiffText(Challenge c)
         => c == null ? "" : (c.PoolDiff == ConstTable.AnyDiff ? "全难度" : c.PoolDiff);
 
-        public static string DiffShort(string diff)
+    public static string DiffShort(string diff)
     {
         if (string.IsNullOrEmpty(diff)) return "";
         if (diff == ConstTable.AnyDiff) return "ALL";
         switch (diff.ToLowerInvariant())
         {
-            case "minimal":   return "MIN";
-            case "evolved":   return "EVO";
-            case "ultimate":  return "ULT";
+            case "minimal": return "MIN";
+            case "evolved": return "EVO";
+            case "ultimate": return "ULT";
             case "forbidden": return "FBD";
         }
+
         return diff;
     }
 
-        public static string DiffKey(string diff)
+    public static string DiffKey(string diff)
     {
         switch (DiffShort(diff))
         {
@@ -1001,18 +1059,20 @@ public static class TaskConfig
             case "ULT": return "ult";
             case "FBD": return "fbd";
         }
+
         return "";
     }
 
-        public static List<string> DiffChoicesOf(int songId)
+    public static List<string> DiffChoicesOf(int songId)
     {
         var res = new List<string>();
         foreach (var d in DiffOrder)
-            if (ConstTable.HasChart(songId, d)) res.Add(d);
+            if (ConstTable.HasChart(songId, d))
+                res.Add(d);
         return res;
     }
 
-        public static List<TaskSong> SetlistFor(Challenge c)
+    public static List<TaskSong> SetlistFor(Challenge c)
     {
         var res = new List<TaskSong>();
         if (c == null) return res;
@@ -1026,12 +1086,14 @@ public static class TaskConfig
                 var s = c.Songs[i];
                 res.Add(overrideDiff ? new TaskSong { Id = s.Id, Diff = pick } : s);
             }
+
             return res;
         }
+
         return ConstTable.Draw(c.PoolDiff, c.PoolMin, c.PoolMax, c.Count);
     }
 
-        public static string DiffFor(Challenge c)
+    public static string DiffFor(Challenge c)
     {
         if (c == null || !c.Switchable) return "";
 
@@ -1046,15 +1108,15 @@ public static class TaskConfig
         return choices.Contains(cfg) ? cfg : choices[choices.Count - 1];
     }
 
-        public static string ProgKey(Challenge c) => ProgKey(c, DiffFor(c));
+    public static string ProgKey(Challenge c) => ProgKey(c, DiffFor(c));
 
-        public static string ProgKey(Challenge c, string diff)
+    public static string ProgKey(Challenge c, string diff)
     {
         if (c == null) return "";
         return string.IsNullOrEmpty(diff) ? c.Key : c.Key + "@" + diff;
     }
 
-        public static bool Unlocked(Challenge c)
+    public static bool Unlocked(Challenge c)
     {
         if (c == null) return false;
         if (c.MinRating > 0 && Plugin.DisplayRating < c.MinRating) return false;
@@ -1063,22 +1125,23 @@ public static class TaskConfig
 
         if (c.Final)
         {
-
             var peers = Group(TagOf(c));
             foreach (var o in peers)
-                if (o.Key != c.Key && !AnyCleared(o)) return false;
+                if (o.Key != c.Key && !AnyCleared(o))
+                    return false;
         }
 
         if (c.Kind != "rank") return true;
         if (c.N <= OpenTiers) return true;
         for (int i = Math.Max(OpenTiers + 1, 2); i <= c.N; i++)
-            if (!TaskProgress.Cleared("rank" + (i - 1))) return false;
+            if (!TaskProgress.Cleared("rank" + (i - 1)))
+                return false;
         return true;
     }
 
-        public static bool AnyCleared(Challenge c) => TaskProgress.ClearedAny(c);
+    public static bool AnyCleared(Challenge c) => TaskProgress.ClearedAny(c);
 
-        public static int LockedInSet(Challenge c)
+    public static int LockedInSet(Challenge c)
     {
         if (c == null || !c.NeedSongs || c.IsPool || c.Songs.Count == 0) return 0;
         if (!SongUnlock.Known) return 0;
@@ -1091,13 +1154,14 @@ public static class TaskConfig
             var s = c.Songs[i];
             if (!SongUnlock.Unlocked(s.Id, overrideDiff ? pick : s.Diff)) n++;
         }
+
         return n;
     }
 
-        public static bool RatingOk(Challenge c)
+    public static bool RatingOk(Challenge c)
         => c != null && (c.MinRating <= 0 || Plugin.DisplayRating >= c.MinRating);
 
-        public static string UnlockHint(Challenge c)
+    public static string UnlockHint(Challenge c)
     {
         if (c == null || Unlocked(c)) return "";
         if (!RatingOk(c)) return $"总评级到 {FmtRating(c.MinRating)} 解锁（现在是 {FmtRating(Plugin.DisplayRating)}）";
@@ -1109,26 +1173,28 @@ public static class TaskConfig
         {
             var peers = Group(TagOf(c));
             foreach (var o in peers)
-                if (o.Key != c.Key && !AnyCleared(o)) return $"先把「{o.Name}」打过";
+                if (o.Key != c.Key && !AnyCleared(o))
+                    return $"先把「{o.Name}」打过";
             return $"先把{c.Name}以外的课题全部通过";
         }
 
         var list = Group(TagOf(c));
         for (int i = 0; i < list.Count; i++)
-            if (list[i].Key == c.Key && i > 0) return $"先把「{list[i - 1].Name}」打过";
+            if (list[i].Key == c.Key && i > 0)
+                return $"先把「{list[i - 1].Name}」打过";
 
         return c.Kind == "rank" ? "先把上一段打过" : "（前一个课题还没过）";
     }
 
-        public static string FmtRating(double r)
+    public static string FmtRating(double r)
     {
         if (double.IsNaN(r) || double.IsInfinity(r)) return "0";
         double v = Math.Floor(r * 10.0 + 1e-7) / 10.0;
         return v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
     }
 
-        static void AddPool(List<Challenge> into, string kind, int n, string name, string note,
-                        double needRating, string diff, int min, int max)
+    static void AddPool(List<Challenge> into, string kind, int n, string name, string note,
+        double needRating, string diff, int min, int max)
     {
         into.Add(new Challenge
         {
@@ -1138,8 +1204,8 @@ public static class TaskConfig
         });
     }
 
-        static Challenge AddFixed(List<Challenge> into, string kind, int n, string name, string note,
-                              double needRating, params int[] ids)
+    static Challenge AddFixed(List<Challenge> into, string kind, int n, string name, string note,
+        double needRating, params int[] ids)
     {
         var c = new Challenge
         {
@@ -1151,7 +1217,7 @@ public static class TaskConfig
         return c;
     }
 
-        public static void EnsureSeeded()
+    public static void EnsureSeeded()
     {
         if (!_needSeed) return;
         _needSeed = false;
@@ -1161,24 +1227,23 @@ public static class TaskConfig
 
         try
         {
+            AddPool(tiers, "rank", 1, "一段", "", 0, ConstTable.AnyDiff, 4, 6);
+            AddPool(tiers, "rank", 2, "二段", "", 2, ConstTable.AnyDiff, 5, 7);
+            AddPool(tiers, "rank", 3, "三段", "", 5, ConstTable.AnyDiff, 6, 8);
+            AddPool(tiers, "rank", 4, "四段", "", 7, ConstTable.AnyDiff, 7, 9);
+            AddPool(tiers, "rank", 5, "五段", "", 10, ConstTable.AnyDiff, 8, 10);
+            AddPool(tiers, "rank", 6, "六段", "", 12, ConstTable.AnyDiff, 9, 11);
 
-            AddPool(tiers, "rank",  1, "一段", "",  0, ConstTable.AnyDiff,  4,  6);
-            AddPool(tiers, "rank",  2, "二段", "",  2, ConstTable.AnyDiff,  5,  7);
-            AddPool(tiers, "rank",  3, "三段", "",  5, ConstTable.AnyDiff,  6,  8);
-            AddPool(tiers, "rank",  4, "四段", "",  7, ConstTable.AnyDiff,  7,  9);
-            AddPool(tiers, "rank",  5, "五段", "", 10, ConstTable.AnyDiff,  8, 10);
-            AddPool(tiers, "rank",  6, "六段", "", 12, ConstTable.AnyDiff,  9, 11);
-
-            AddFixed(tiers, "rank",  7, "七段", "", 0, 15, 22, 33, 19);
-            AddFixed(tiers, "rank",  8, "八段", "", 0, 43, 68, 29, 45);
-            AddFixed(tiers, "rank",  9, "九段", "", 0, 46, 49, 53, 10);
+            AddFixed(tiers, "rank", 7, "七段", "", 0, 15, 22, 33, 19);
+            AddFixed(tiers, "rank", 8, "八段", "", 0, 43, 68, 29, 45);
+            AddFixed(tiers, "rank", 9, "九段", "", 0, 46, 49, 53, 10);
             AddFixed(tiers, "rank", 10, "十段", "", 0, 48, 6, 61, 9);
 
             AddFixed(themes, "theme", 1, "ARCAEA", "Arcaea 那几首里定数最高的四首",
-                     0, 5, 12, 28, 59).Art = "arc";
+                0, 5, 12, 28, 59).Art = "arc";
 
             Plugin.Logger.LogInfo($"[Exam] 已写默认题库：段位 {tiers.Count} 段（1~6 段随机池 / 7~10 段定曲）、"
-                + $"主题 {themes.Count} 个");
+                                  + $"主题 {themes.Count} 个");
         }
         catch (Exception ex)
         {
@@ -1196,7 +1261,7 @@ public static class TaskConfig
     {
         try
         {
-            Directory.CreateDirectory(Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             var sb = new StringBuilder();
             sb.AppendLine("{");
             sb.AppendLine("  // dive 掉到它就**在日志里记一笔**。2026-09-28 起它不管判死了 ——");
@@ -1251,7 +1316,8 @@ public static class TaskConfig
             sb.AppendLine($"    \"openTiers\": {OpenTiers},");
             sb.AppendLine("    \"tiers\": [");
 
-            for (int i = 0; i < _tiersFile.Count; i++) WriteChallenge(sb, _tiersFile[i], "      ", i == _tiersFile.Count - 1);
+            for (int i = 0; i < _tiersFile.Count; i++)
+                WriteChallenge(sb, _tiersFile[i], "      ", i == _tiersFile.Count - 1);
             sb.AppendLine("    ]");
             sb.AppendLine("  },");
             sb.AppendLine();
@@ -1259,7 +1325,8 @@ public static class TaskConfig
             sb.AppendLine("  // 跟段位是同一套东西，多了个 note 当说明，**不做解锁**（全都开着）。");
             sb.AppendLine("  \"themes\": [");
 
-            for (int i = 0; i < _themesFile.Count; i++) WriteChallenge(sb, _themesFile[i], "    ", i == _themesFile.Count - 1);
+            for (int i = 0; i < _themesFile.Count; i++)
+                WriteChallenge(sb, _themesFile[i], "    ", i == _themesFile.Count - 1);
             sb.AppendLine("  ]");
             sb.AppendLine("}");
             File.WriteAllText(ConfigFile, sb.ToString());
@@ -1270,17 +1337,19 @@ public static class TaskConfig
         }
     }
 
-        public static string HpJson(HpConfig h)
+    public static string HpJson(HpConfig h)
     {
         if (h == null) return "{}";
         var sb = new StringBuilder("{");
         bool first = true;
+
         void Add(string k, string v)
         {
             if (!first) sb.Append(", ");
             first = false;
             sb.Append('"').Append(k).Append("\": ").Append(v);
         }
+
         if (h.Max.HasValue) Add("max", h.Max.Value.ToString());
         if (h.Min.HasValue) Add("min", h.Min.Value.ToString());
         if (h.Pass.HasValue) Add("pass", h.Pass.Value.ToString());
@@ -1293,7 +1362,7 @@ public static class TaskConfig
         return sb.Append('}').ToString();
     }
 
-        static void WriteChallenge(StringBuilder sb, Challenge c, string indent, bool last)
+    static void WriteChallenge(StringBuilder sb, Challenge c, string indent, bool last)
     {
         sb.Append(indent).Append("{ \"n\": ").Append(c.N);
         if (c.Name.Length > 0) sb.Append(", \"name\": \"").Append(Esc(c.Name)).Append('"');
@@ -1311,8 +1380,9 @@ public static class TaskConfig
             {
                 if (i > 0) sb.Append(", ");
                 sb.Append("{ \"id\": ").Append(c.Songs[i].Id)
-                  .Append(", \"diff\": \"").Append(Esc(c.Songs[i].Diff)).Append("\" }");
+                    .Append(", \"diff\": \"").Append(Esc(c.Songs[i].Diff)).Append("\" }");
             }
+
             sb.Append(']');
         }
 
@@ -1343,7 +1413,7 @@ public static class TaskConfig
         if (d == null) return;
         try
         {
-            Directory.CreateDirectory(Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             var sb = new StringBuilder();
             sb.AppendLine("{");
             sb.AppendLine($"  \"at\": \"{DateTime.Now:yyyy-MM-dd HH:mm}\",");
@@ -1365,7 +1435,7 @@ public static class TaskConfig
         }
     }
 
-        public static string LastResultLine()
+    public static string LastResultLine()
     {
         if (Environment.TickCount - _lastLineAt < 1000) return _lastLine;
         _lastLineAt = Environment.TickCount;
@@ -1398,7 +1468,10 @@ public static class TaskConfig
                 : $"上次 {at} · {who}没过（打了 {played}/{total} 首）";
             return string.IsNullOrEmpty(verdict) ? head : head + " · " + verdict;
         }
-        catch { return ""; }
+        catch
+        {
+            return "";
+        }
     }
 
     static string Str(JsonElement o, string k)

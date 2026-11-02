@@ -31,7 +31,6 @@ public static class ConstTable
 
     public static string Text(double c)
     {
-        Plugin.Logger.LogInfo($"[Const] 使用格式：{ConstTableConfig.Format}");
         return c.ToString(ConstTableConfig.Format, CultureInfo.InvariantCulture);
     }
 
@@ -188,7 +187,7 @@ public static class ConstTable
     {
         try
         {
-            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string dir = Settings.ConfigRoot;
             string file = Path.Combine(dir, "const.json");
             Directory.CreateDirectory(dir);
 
@@ -243,7 +242,7 @@ public static class ConstTable
 
         try
         {
-            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string dir = Settings.ConfigRoot;
             Directory.CreateDirectory(dir);
             string file = Path.Combine(dir, "const.json");
 

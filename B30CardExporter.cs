@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using BepInEx;
+using UnityEngine;
 
 namespace InFalsusRating;
 
@@ -45,9 +46,8 @@ public static class B30CardExporter
     const int NJ_BLOCK_X    = (CARDS_ORIGIN_X - NJ_BLOCK_W) / 2;
     const int NJ_CARD_X     = NJ_BLOCK_X + NJ_RANK_COL_W + NJ_RANK_GAP;
 
-    static string Root        => Path.Combine(Paths.ConfigPath, "InFalsusRating");
-    static string CardsDir    => Path.Combine(Root, "b30_cards");
-    static string JacketDir   => Path.Combine(Root, "jacket");
+    static string CardsDir    => Path.Combine(Settings.ConfigRoot, "b30_cards");
+    static string JacketDir   => Path.Combine(Settings.ConfigRoot, "jacket");
 
     static string[] BigBgCandidates => new[]
     {
@@ -282,6 +282,7 @@ public static class B30CardExporter
     [DllImport("gdiplus.dll")] static extern int GdipDisposeImage(IntPtr image);
     [DllImport("gdiplus.dll")] static extern int GdipGetImageWidth(IntPtr image, out uint width);
     [DllImport("gdiplus.dll")] static extern int GdipGetImageHeight(IntPtr image, out uint height);
+    [DllImport("gdiplus.dll")] static extern int GdipDrawImage(IntPtr graphics, IntPtr image, float x, float y);
     [DllImport("gdiplus.dll")] static extern int GdipDrawImageRectI(IntPtr graphics, IntPtr image, int x, int y, int w, int h);
 
     [DllImport("gdiplus.dll")] static extern int GdipNewPrivateFontCollection(out IntPtr fontCollection);
@@ -301,11 +302,15 @@ public static class B30CardExporter
     [DllImport("gdiplus.dll")] static extern int GdipCreateStringFormat(int formatAttributes, int language, out IntPtr format);
     [DllImport("gdiplus.dll")] static extern int GdipSetStringFormatAlign(IntPtr format, int align);
     [DllImport("gdiplus.dll")] static extern int GdipSetStringFormatLineAlign(IntPtr format, int align);
+    [DllImport("gdiplus.dll")] static extern int GdipGetStringFormatAlign(IntPtr format, out int align);
+    [DllImport("gdiplus.dll")] static extern int GdipGetStringFormatLineAlign(IntPtr format, out int align);
     [DllImport("gdiplus.dll")] static extern int GdipDeleteStringFormat(IntPtr format);
     [DllImport("gdiplus.dll")] static extern int GdipSetTextRenderingHint(IntPtr graphics, int mode);
+    [DllImport("gdiplus.dll")] static extern int GdipGraphicsClear(IntPtr graphics, int color);
     [DllImport("gdiplus.dll", CharSet = CharSet.Unicode)] static extern int GdipDrawString(IntPtr graphics, string text, int length, IntPtr font, ref GPRECTF layoutRect, IntPtr stringFormat, IntPtr brush);
     [DllImport("gdiplus.dll", CharSet = CharSet.Unicode)] static extern int GdipMeasureString(IntPtr graphics, string text, int length, IntPtr font, ref GPRECTF layoutRect, IntPtr stringFormat, out GPRECTF boundingBox, out int codepointsFitted, out int linesFilled);
 
+    [DllImport("gdiplus.dll")] static extern int GdipScaleWorldTransform(IntPtr graphics, float sx, float sy, int order);
     [DllImport("gdiplus.dll")] static extern int GdipFillRectangleI(IntPtr graphics, IntPtr brush, int x, int y, int w, int h);
     [DllImport("gdiplus.dll")] static extern int GdipSetClipRectI(IntPtr graphics, int x, int y, int width, int height, int combineMode);
     [DllImport("gdiplus.dll")] static extern int GdipResetClip(IntPtr graphics);
@@ -883,9 +888,13 @@ public static class B30CardExporter
             X = B10_CARD_X + SlotB10Title.X, Y = rowY + B10_CARD_OFFY + rectY,
             Width = 290f, Height = h,
         };
-        GdipCreateSolidFill(diffColor, out IntPtr titleBrush);
         IntPtr titleFont = TitleUseFurore(songId) ? _fontB10TitleFurore : _fontB10Title;
-        GdipDrawString(g, title, -1, titleFont, ref rect, _fmtNameNowrap, titleBrush);
+        var measure = new GPRECTF { X = 0, Y = 0, Width = 10000f, Height = 10000f };
+        GdipMeasureString(g, title, -1, titleFont, ref measure, _fmtNameNowrap, out var titleBox, out _, out _);
+        float titleS = Mathf.Min(280f / titleBox.Width, 1f);
+        
+        GdipCreateSolidFill(diffColor, out IntPtr titleBrush);
+        DrawScaledString(g, title, -1, titleFont, ref rect, _fmtNameNowrap, titleBrush, titleS, 1f);
         GdipDeleteBrush(titleBrush);
     }
 
@@ -915,15 +924,19 @@ public static class B30CardExporter
             : FitFontToWidth(g, _segoeFamily,  FontStyleBold, SlotB30RowTitle.Size, title, 270, _fontB30Title);
 
         var measure = new GPRECTF { X = 0, Y = 0, Width = 10000f, Height = 10000f };
-        GdipMeasureString(g, title, -1, titleFont, ref measure, IntPtr.Zero, out var titleBox, out _, out _);
+        GdipMeasureString(g, title, -1, titleFont, ref measure, _fmtNameNowrap, out var titleBox, out _, out _);
         float titleH = titleBox.Height;
+        float titleS = Mathf.Min(CARD_W / titleBox.Width, 1f);
 
         float artistH = 0f;
+        float artistW = 0f;
         if (!string.IsNullOrEmpty(artist))
         {
-            GdipMeasureString(g, artist, -1, _fontB30Artist, ref measure, IntPtr.Zero, out var artistBox, out _, out _);
+            GdipMeasureString(g, artist, -1, _fontB30Artist, ref measure, _fmtNameNowrap, out var artistBox, out _, out _);
             artistH = artistBox.Height;
+            artistW = artistBox.Width;
         }
+        float artistS = Mathf.Min(CARD_W / artistW, 1f);
 
         const float ROW_TEXT_GAP = -11f;
         float blockH = titleH + (artistH > 0 ? ROW_TEXT_GAP + artistH : 0);
@@ -936,7 +949,7 @@ public static class B30CardExporter
             Y = rowY + blockTop,
             Width = 270f, Height = titleH,
         };
-        GdipDrawString(g, title, -1, titleFont, ref titleRect, _fmtNameNowrap, titleBrush);
+        DrawScaledString(g, title, -1, titleFont, ref titleRect, _fmtNameNowrap, titleBrush, titleS, 1f);
         GdipDeleteBrush(titleBrush);
         if (titleFont != _fontB30Title && titleFont != _fontB30TitleFurore) GdipDeleteFont(titleFont);
 
@@ -949,7 +962,7 @@ public static class B30CardExporter
                 Y = rowY + blockTop + titleH + ROW_TEXT_GAP,
                 Width = 300f, Height = artistH,
             };
-            GdipDrawString(g, artist, -1, _fontB30Artist, ref artistRect, _fmtNameNowrap, artistBrush);
+            DrawScaledString(g, artist, -1, _fontB30Artist, ref artistRect, _fmtNameNowrap, artistBrush, artistS, 1f);
             GdipDeleteBrush(artistBrush);
         }
     }
@@ -963,6 +976,78 @@ public static class B30CardExporter
             int rowY = B10_Y + i * (B10_ROW_H + B10_GAP);
             DrawSimpleRow(g, i + 1, SongInfoCache.GetName(c.SongId), c.SongId, c.Difficulty,
                 c.ExactCount.ToString(), c.Rate.ToString("F1"), rowY);
+        }
+    }
+
+    static void DrawScaledString(IntPtr graphics, string text, int length, IntPtr font, ref GPRECTF layoutRect,
+        IntPtr format, IntPtr brush, float sx, float sy)
+    {
+        if (graphics == IntPtr.Zero || font == IntPtr.Zero || brush == IntPtr.Zero) return;
+        if (string.IsNullOrEmpty(text)) return;
+        if (!(sx > 0f) || !(sy > 0f)) return;
+
+        if (sx == 1f && sy == 1f)
+        {
+            GdipDrawString(graphics, text, length, font, ref layoutRect, format, brush);
+            return;
+        }
+
+        var measureRect = new GPRECTF { X = 0f, Y = 0f, Width = 10000f, Height = 10000f };
+        if (GdipMeasureString(graphics, text, length, font, ref measureRect, format, out var textBox, out _, out _) != 0) return;
+
+        float textW = textBox.Width;
+        float textH = textBox.Height;
+        if (!(textW > 0f) || !(textH > 0f)) return;
+
+        int align = StringAlignmentNear;
+        int lineAlign = StringAlignmentNear;
+        if (format != IntPtr.Zero)
+        {
+            if (GdipGetStringFormatAlign(format, out int a) == 0) align = a;
+            if (GdipGetStringFormatLineAlign(format, out int la) == 0) lineAlign = la;
+        }
+
+        const float PAD = 4f;
+        float boxW = Math.Max(layoutRect.Width, textW * sx) + PAD;
+        float boxH = Math.Max(layoutRect.Height, textH * sy) + PAD;
+
+        float boxX = align switch
+        {
+            StringAlignmentCenter => layoutRect.X + (layoutRect.Width - boxW) / 2f,
+            StringAlignmentFar    => layoutRect.X + layoutRect.Width - boxW,
+            _                     => layoutRect.X,
+        };
+        float boxY = lineAlign switch
+        {
+            StringAlignmentCenter => layoutRect.Y + (layoutRect.Height - boxH) / 2f,
+            StringAlignmentFar    => layoutRect.Y + layoutRect.Height - boxH,
+            _                     => layoutRect.Y,
+        };
+
+        int w = Math.Max(1, (int)Math.Ceiling(boxW));
+        int h = Math.Max(1, (int)Math.Ceiling(boxH));
+
+        IntPtr bitmap = IntPtr.Zero;
+        IntPtr tmpGfx = IntPtr.Zero;
+        try
+        {
+            if (GdipCreateBitmapFromScan0(w, h, 0, PixelFormat32bppARGB, IntPtr.Zero, out bitmap) != 0) return;
+            if (GdipGetImageGraphicsContext(bitmap, out tmpGfx) != 0) return;
+
+            GdipGraphicsClear(tmpGfx, 0);
+            GdipSetTextRenderingHint(tmpGfx, TextRenderingHintAntiAlias);
+
+            if (GdipScaleWorldTransform(tmpGfx, sx, sy, 0) != 0) return;
+
+            var tmpRect = new GPRECTF { X = 0f, Y = 0f, Width = boxW / sx, Height = boxH / sy };
+            GdipDrawString(tmpGfx, text, length, font, ref tmpRect, format, brush);
+
+            GdipDrawImage(graphics, bitmap, boxX, boxY);
+        }
+        finally
+        {
+            if (tmpGfx != IntPtr.Zero) GdipDeleteGraphics(tmpGfx);
+            if (bitmap != IntPtr.Zero) GdipDisposeImage(bitmap);
         }
     }
 
@@ -993,7 +1078,6 @@ public static class B30CardExporter
 
     static void DrawCard(IntPtr g, ChartRating c, int rank, int cardX, int cardY)
     {
-
         foreach (var (subDir, isJacket) in LayerOrder)
         {
             string path;
@@ -1021,7 +1105,6 @@ public static class B30CardExporter
             }
             else
             {
-
                 GdipDrawImageRectI(g, bmp, cardX, cardY, CARD_W, CARD_H);
             }
         }
@@ -1048,8 +1131,8 @@ public static class B30CardExporter
         
         DrawSlot(g, rankFont, SlotRank, $"#{rank}", cardX, cardY);
         DrawSlot(g, fontDiff,   SlotDiff,   diffText,   cardX, cardY);
-        DrawSlot(g, titleFont,  SlotTitle,  titleText,  cardX, cardY);
-        DrawSlot(g, artistFont, SlotArtist, artist,     cardX, cardY);
+        DrawSlot(g, titleFont,  SlotTitle,  titleText,  cardX, cardY, sxRef:CARD_W);
+        DrawSlot(g, artistFont, SlotArtist, artist,     cardX, cardY, sxRef:CARD_W);
         DrawSlot(g, _fontScore,  SlotScore,  scoreText,  cardX, cardY);
         DrawSlot(g, _fontDive,   SlotDive,   diveText,   cardX, cardY);
         DrawSlot(g, _fontExact,  SlotExact,  potentialText,  cardX, cardY);
@@ -1058,7 +1141,7 @@ public static class B30CardExporter
         if (artistFont != _fontArtist) GdipDeleteFont(artistFont);
     }
 
-    static void DrawSlot(IntPtr g, IntPtr font, TextSlot slot, string text, int cardX, int cardY, int? colorOverride = null)
+    static void DrawSlot(IntPtr g, IntPtr font, TextSlot slot, string text, int cardX, int cardY, int? colorOverride = null, float sxRef = -1f, float syRef = -1f)
     {
         if (string.IsNullOrEmpty(text) || font == IntPtr.Zero) return;
 
@@ -1092,7 +1175,17 @@ public static class B30CardExporter
         IntPtr brush;
         GdipCreateSolidFill(color, out brush);
 
-        GdipDrawString(g, text, -1, font, ref rect, fmt, brush);
+        if (sxRef > 0f || syRef > 0f)
+        {
+            GdipMeasureString(g, text, -1, font, ref rect, fmt, out var textBox, out _, out _);
+            sxRef = sxRef > 0f ? Mathf.Min(1f, sxRef / textBox.Width) : 1f;
+            syRef = syRef > 0f ? Mathf.Min(1f, syRef / textBox.Height) : 1f;
+            DrawScaledString(g, text, -1, font, ref rect, fmt, brush, sxRef, syRef);
+        }
+        else
+        {
+            GdipDrawString(g, text, -1, font, ref rect, fmt, brush);
+        }
         GdipDeleteBrush(brush);
     }
 

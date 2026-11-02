@@ -50,7 +50,7 @@ public static partial class GameProbe
     {
         try
         {
-            string dir = Path.Combine(Paths.ConfigPath, "InFalsusRating");
+            string dir = Settings.ConfigRoot;
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, "GameProbe.txt"), _o.ToString(), new UTF8Encoding(false));
         }

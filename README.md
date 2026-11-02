@@ -1,11 +1,19 @@
 # In Falsus Rating
 
-为 In Falsus 提供类似 Arcaea Potential 的玩家评级系统。
+为 `In Falsus` 提供类似 Arcaea Potential 的玩家评级系统。
 
 > 此项目由 AI（DeepSeek v4 pro）共同构筑。
 > 意见和反馈可以进入QQ群 384322205 提出，也可以来聊天和潜水，新版本包也会在群内发布！
 
-编译前请修改 `csproj` 里的 `GameDir`。
+编译前请修改或创建 `ProjectSettings.props`，并写入你的 `In Falsus` 文件夹所在位置（例：`J:\SteamLibrary\steamapps\common\In Falsus`）<br>
+文件模板如下：
+```xml
+<Project>
+    <PropertyGroup>
+        <GameDir Condition="'$(GameDir)' == ''">path\to\In Falsus</GameDir>
+    </PropertyGroup>
+</Project>
+```
 
 ---
 

@@ -186,7 +186,7 @@ public static partial class GameProbe
         return true;
     }
 
-        internal static string MbMusicDir() { return Path.Combine(Paths.ConfigPath, "InFalsusRating", "music"); }
+        internal static string MbMusicDir() { return Path.Combine(Settings.ConfigRoot, "music"); }
 
         internal static readonly string[] MbSrcExts = { ".ogg", ".wav", ".mp3", ".flac", ".oga", ".opus", ".m4a", ".aiff" };
 

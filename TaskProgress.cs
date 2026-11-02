@@ -21,21 +21,21 @@ public static class TaskProgress
 {
     public class Rec
     {
-                public bool Cleared;
-                public string Grade = "";
-                public long Avg;
+        public bool Cleared;
+        public string Grade = "";
+        public long Avg;
         public string At = "";
 
-                public int Seen;
+        public int Seen;
     }
 
     static Dictionary<string, Rec> _recs = new Dictionary<string, Rec>();
 
-        static Dictionary<string, string> _picks = new Dictionary<string, string>();
+    static Dictionary<string, string> _picks = new Dictionary<string, string>();
 
-    public static string FilePath => Path.Combine(TaskConfig.Dir, "tasks_progress.json");
+    public static string FilePath => Path.Combine(Settings.ConfigRoot, "tasks_progress.json");
 
-    public static string PicksFile => Path.Combine(TaskConfig.Dir, "tasks_picks.json");
+    public static string PicksFile => Path.Combine(Settings.ConfigRoot, "tasks_picks.json");
 
     static bool _loaded = false;
 
@@ -43,9 +43,15 @@ public static class TaskProgress
     {
         if (_loaded) return;
         _loaded = true;
+        ExternalSaveManager.RegisterFile(PicksFile, LoadPicks);
+        ExternalSaveManager.RegisterFile(FilePath, LoadRecords);
         LoadPicks();
-        var recs = new Dictionary<string, Rec>();
+        LoadRecords();
+    }
 
+    private static void LoadRecords()
+    {
+        var recs = new Dictionary<string, Rec>();
         try
         {
             string path = FilePath;
@@ -62,12 +68,19 @@ public static class TaskProgress
                 {
                     Cleared = v.TryGetProperty("cleared", out var c) && c.ValueKind == JsonValueKind.True,
                     Grade = Out(v, "grade"),
-                    Avg = v.TryGetProperty("avg", out var a) && a.ValueKind == JsonValueKind.Number && a.TryGetInt64(out long av) ? av : 0,
+                    Avg = v.TryGetProperty("avg", out var a) && a.ValueKind == JsonValueKind.Number &&
+                          a.TryGetInt64(out long av)
+                        ? av
+                        : 0,
                     At = Out(v, "at"),
-                    Seen = v.TryGetProperty("seen", out var sn) && sn.ValueKind == JsonValueKind.Number && sn.TryGetInt32(out int sv) ? sv : 0,
+                    Seen = v.TryGetProperty("seen", out var sn) && sn.ValueKind == JsonValueKind.Number &&
+                           sn.TryGetInt32(out int sv)
+                        ? sv
+                        : 0,
                 };
                 recs[p.Name] = r;
             }
+
             Plugin.Logger.LogInfo($"[Exam] 课题进度载入：{recs.Count} 条记录");
             MigrateFinalKeys(recs);
         }
@@ -84,7 +97,7 @@ public static class TaskProgress
     static string Out(JsonElement o, string k)
         => o.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : "";
 
-        static void MigrateFinalKeys(Dictionary<string, Rec> recs)
+    static void MigrateFinalKeys(Dictionary<string, Rec> recs)
     {
         var t = TaskConfig.Tiers;
         var m = TaskConfig.Themes;
@@ -101,34 +114,44 @@ public static class TaskProgress
 
             if (recs.TryGetValue(target, out var cur))
             {
-
                 cur.Cleared |= old.Cleared;
                 if (old.Seen > cur.Seen) cur.Seen = old.Seen;
                 if (string.IsNullOrEmpty(cur.Grade) && !string.IsNullOrEmpty(old.Grade))
-                { cur.Grade = old.Grade; cur.Avg = old.Avg; cur.At = old.At; }
+                {
+                    cur.Grade = old.Grade;
+                    cur.Avg = old.Avg;
+                    cur.At = old.At;
+                }
             }
             else recs[target] = old;
 
             Plugin.Logger.LogWarning($"[Exam] ⚠ 老档迁移：「{c.Name}」的旧记录（裸键 {c.Key}，当年不分难度）"
-                + $"已搬到「{target}」轨 —— 依据是选档表里那档 {d}（没选过 = 默认 Forbidden）。"
-                + "当年实际通的可能是别的档；不对就手改 tasks_progress.json。原文件留了一份 .presplit.bak 备份。");
+                                     + $"已搬到「{target}」轨 —— 依据是选档表里那档 {d}（没选过 = 默认 Forbidden）。"
+                                     + "当年实际通的可能是别的档；不对就手改 tasks_progress.json。原文件留了一份 .presplit.bak 备份。");
 
             try
             {
                 string bak = FilePath + ".presplit.bak";
                 if (!System.IO.File.Exists(bak)) System.IO.File.Copy(FilePath, bak);
             }
-            catch (Exception ex) { Plugin.Logger.LogWarning($"[Exam] 老档备份失败（不影响迁移）: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                Plugin.Logger.LogWarning($"[Exam] 老档备份失败（不影响迁移）: {ex.Message}");
+            }
         }
 
-        if (t != null) foreach (var c in t) One(c);
-        if (m != null) foreach (var c in m) One(c);
+        if (t != null)
+            foreach (var c in t)
+                One(c);
+        if (m != null)
+            foreach (var c in m)
+                One(c);
     }
 
-        public static string Pick(string key)
+    public static string Pick(string key)
         => key != null && _picks.TryGetValue(key, out var d) ? d : "";
 
-        public static void SetPick(string key, string diff)
+    public static void SetPick(string key, string diff)
     {
         if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(diff)) return;
         if (Pick(key) == diff) return;
@@ -169,7 +192,7 @@ public static class TaskProgress
     {
         try
         {
-            Directory.CreateDirectory(TaskConfig.Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             var snap = _picks;
             var sb = new StringBuilder();
             sb.AppendLine("{");
@@ -179,6 +202,7 @@ public static class TaskProgress
                 sb.Append($"  \"{Esc(kv.Key)}\": \"{Esc(kv.Value)}\"");
                 sb.AppendLine(++i < snap.Count ? "," : "");
             }
+
             sb.AppendLine("}");
             System.IO.File.WriteAllText(PicksFile, sb.ToString());
         }
@@ -188,33 +212,41 @@ public static class TaskProgress
         }
     }
 
-        public static void Reload()
+    public static void Reload()
     {
         LoadPicks();
 
-        if (!System.IO.File.Exists(FilePath))
+        if (!File.Exists(FilePath))
         {
             Plugin.Logger.LogWarning("[Exam] 没有 tasks_progress.json，进度保持不变");
             return;
         }
-        _loaded = false;
-        Load();
+
+        LoadRecords();
     }
 
-        public static IEnumerable<Challenge> All()
+    public static IEnumerable<Challenge> All()
     {
-
         var t = TaskConfig.Tiers;
         var m = TaskConfig.Themes;
-        if (t != null) foreach (var c in t) yield return c;
-        if (m != null) foreach (var c in m) yield return c;
+        if (t != null)
+            foreach (var c in t)
+                yield return c;
+        if (m != null)
+            foreach (var c in m)
+                yield return c;
     }
 
-        public static IEnumerable<string> ProgKeysOf(Challenge c)
+    public static IEnumerable<string> ProgKeysOf(Challenge c)
     {
         if (c == null) yield break;
         var choices = c.DiffChoices();
-        if (choices.Count == 0) { yield return c.Key; yield break; }
+        if (choices.Count == 0)
+        {
+            yield return c.Key;
+            yield break;
+        }
+
         foreach (var d in choices) yield return TaskConfig.ProgKey(c, d);
     }
 
@@ -227,7 +259,7 @@ public static class TaskProgress
         return r != null && r.Cleared;
     }
 
-        public static bool ClearedAny(Challenge c)
+    public static bool ClearedAny(Challenge c)
     {
         if (c == null) return false;
         string k = c.Key;
@@ -246,18 +278,19 @@ public static class TaskProgress
             }
 
             else if (key.Length > k.Length && key[k.Length] == '@'
-                     && key.StartsWith(k, StringComparison.Ordinal)) return true;
+                                           && key.StartsWith(k, StringComparison.Ordinal)) return true;
         }
+
         return false;
     }
 
-        public static int Seen(string key)
+    public static int Seen(string key)
     {
         var r = Get(key);
         return r != null ? r.Seen : 0;
     }
 
-        public static void NoteSeen(string key, int n)
+    public static void NoteSeen(string key, int n)
     {
         if (string.IsNullOrEmpty(key) || n <= 0) return;
         var old = Get(key);
@@ -268,44 +301,44 @@ public static class TaskProgress
         next[key] = new Rec
         {
             Cleared = old != null && old.Cleared,
-            Grade   = old != null ? old.Grade : "",
-            Avg     = old != null ? old.Avg : 0,
-            At      = old != null ? old.At : "",
-            Seen    = n,
+            Grade = old != null ? old.Grade : "",
+            Avg = old != null ? old.Avg : 0,
+            At = old != null ? old.At : "",
+            Seen = n,
         };
         _recs = next;
         Save();
         Plugin.Logger.LogInfo($"[Exam] 进度 {key}：揭开到第 {n} 首"
-            + (was > 0 ? $"（原来是 {was}）" : "（第一次进谱）"));
+                              + (was > 0 ? $"（原来是 {was}）" : "（第一次进谱）"));
     }
 
-        public static int GradeRank(string g)
+    public static int GradeRank(string g)
     {
         switch ((g ?? "").Trim().ToUpperInvariant())
         {
             case "S+": return 5;
-            case "S":  return 4;
-            case "A":  return 3;
-            case "B":  return 2;
-            case "C":  return 1;
-            default:   return 0;
+            case "S": return 4;
+            case "A": return 3;
+            case "B": return 2;
+            case "C": return 1;
+            default: return 0;
         }
     }
 
-        public static string GradeWord(string g)
+    public static string GradeWord(string g)
     {
         switch ((g ?? "").Trim().ToUpperInvariant())
         {
             case "S+": return "PD";
-            case "S":  return "FL";
-            case "A":  return "EX+";
-            case "B":  return "EX";
-            case "C":  return "C";
-            default:   return g ?? "";
+            case "S": return "FL";
+            case "A": return "EX+";
+            case "B": return "EX";
+            case "C": return "C";
+            default: return g ?? "";
         }
     }
 
-        public static void Record(string progKey, string name, SettlementData d)
+    public static void Record(string progKey, string name, SettlementData d)
     {
         if (string.IsNullOrEmpty(progKey) || d == null) return;
 
@@ -328,7 +361,7 @@ public static class TaskProgress
         _recs = next;
 
         Plugin.Logger.LogInfo($"[Exam] 进度 {progKey}（{name}）：{(rec.Cleared ? "已通过" : "未通过")}"
-            + $" · 最好档位 {rec.Grade} · 最好均分 {rec.Avg:N0}");
+                              + $" · 最好档位 {rec.Grade} · 最好均分 {rec.Avg:N0}");
 
         Save();
     }
@@ -337,7 +370,7 @@ public static class TaskProgress
     {
         try
         {
-            Directory.CreateDirectory(TaskConfig.Dir);
+            Directory.CreateDirectory(Settings.ConfigRoot);
             var snapshot = _recs;
             var sb = new StringBuilder();
             sb.AppendLine("{");
@@ -348,9 +381,10 @@ public static class TaskProgress
 
                 string seen = r.Seen > 0 ? $", \"seen\": {r.Seen}" : "";
                 sb.Append($"  \"{Esc(kv.Key)}\": {{ \"cleared\": {(r.Cleared ? "true" : "false")}, "
-                    + $"\"grade\": \"{Esc(r.Grade)}\", \"avg\": {r.Avg}, \"at\": \"{Esc(r.At)}\"{seen} }}");
+                          + $"\"grade\": \"{Esc(r.Grade)}\", \"avg\": {r.Avg}, \"at\": \"{Esc(r.At)}\"{seen} }}");
                 sb.AppendLine(++i < snapshot.Count ? "," : "");
             }
+
             sb.AppendLine("}");
             System.IO.File.WriteAllText(FilePath, sb.ToString());
         }

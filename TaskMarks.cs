@@ -9,37 +9,40 @@ namespace InFalsusRating;
 
 public static class TaskMarks
 {
-        public static string JsonPath => Path.Combine(
-        BepInEx.Paths.ConfigPath, "InFalsusRating", "taskmarks.json");
+    public static string JsonPath => Path.Combine(Settings.ConfigRoot, "taskmarks.json");
 
-        const int SaveMinMs = 1000;
+    const int SaveMinMs = 1000;
 
-        readonly struct Range
+    readonly struct Range
     {
         public readonly int Start;
         public readonly int End;
-        public Range(int s, int e) { Start = s; End = e; }
+
+        public Range(int s, int e)
+        {
+            Start = s;
+            End = e;
+        }
     }
 
     static readonly object _lock = new object();
 
-        static readonly List<Range> _ranges = new List<Range>();
+    static readonly List<Range> _ranges = new List<Range>();
 
-        static bool _active;
+    static bool _active;
 
-        static int _startN = -1;
+    static int _startN = -1;
 
-        static int _seen;
+    static int _seen;
 
     static bool _dirty;
     static int _lastSaveTick = unchecked(Environment.TickCount - SaveMinMs);
 
-        public static void Begin(int historyLength)
+    public static void Begin(int historyLength)
     {
         bool closed = false;
         lock (_lock)
         {
-
             if (_active) closed = CloseActiveLocked(_seen);
 
             _active = true;
@@ -50,7 +53,6 @@ public static class TaskMarks
             }
             else
             {
-
                 _startN = _seen;
             }
         }
@@ -58,7 +60,7 @@ public static class TaskMarks
         if (closed) Save(force: true);
     }
 
-        public static void End(int historyLength)
+    public static void End(int historyLength)
     {
         lock (_lock)
         {
@@ -66,7 +68,6 @@ public static class TaskMarks
 
             if (historyLength >= 0 && historyLength < _seen)
             {
-
                 _ranges.Clear();
                 _seen = historyLength;
             }
@@ -83,13 +84,13 @@ public static class TaskMarks
         Save(force: true);
     }
 
-        static bool CloseActiveLocked(int endN)
+    static bool CloseActiveLocked(int endN)
     {
         int s = _startN >= 0 ? _startN : _seen;
         return AppendRange(s, endN);
     }
 
-        public static void Observe(int count)
+    public static void Observe(int count)
     {
         if (count < 0) return;
 
@@ -98,13 +99,13 @@ public static class TaskMarks
         {
             if (count < _seen)
             {
-
                 if (_ranges.Count > 0)
                 {
                     _ranges.Clear();
                     changed = true;
                     Plugin.Logger.LogInfo("[段位记录] history 变短 —— 旧的挑战区间已作废（下标重新对齐）");
                 }
+
                 _seen = count;
                 if (_active) _startN = count;
             }
@@ -115,6 +116,7 @@ public static class TaskMarks
                     if (_startN < 0) _startN = _seen;
                     changed = AppendRange(_startN, count);
                 }
+
                 if (count > _seen) _seen = count;
             }
         }
@@ -122,7 +124,7 @@ public static class TaskMarks
         if (changed) Save(force: false);
     }
 
-        public static bool Contains(int index)
+    public static bool Contains(int index)
     {
         if (index < 0) return false;
         lock (_lock)
@@ -137,10 +139,11 @@ public static class TaskMarks
                 else return true;
             }
         }
+
         return false;
     }
 
-        static bool AppendRange(int s, int e)
+    static bool AppendRange(int s, int e)
     {
         if (e <= s) return false;
 
@@ -162,7 +165,7 @@ public static class TaskMarks
         return true;
     }
 
-        public static void Save(bool force = false)
+    public static void Save(bool force = false)
     {
         lock (_lock)
         {
@@ -173,7 +176,8 @@ public static class TaskMarks
             {
                 var sb = new StringBuilder(256 + _ranges.Count * 16);
                 sb.AppendLine("{");
-                sb.AppendLine("  \"_字段\": \"ranges = 每场课题/段位挑战在 history 里的下标区间 [起, 止)：落在这里面的记录就是挑战期间打的（成绩页 HISTORY 页签画框）。seen = 账本已经对齐到的 history 条数。删掉整个文件 = 之前那些挑战标记全部消失（游戏成绩本身不动）。\",");
+                sb.AppendLine(
+                    "  \"_字段\": \"ranges = 每场课题/段位挑战在 history 里的下标区间 [起, 止)：落在这里面的记录就是挑战期间打的（成绩页 HISTORY 页签画框）。seen = 账本已经对齐到的 history 条数。删掉整个文件 = 之前那些挑战标记全部消失（游戏成绩本身不动）。\",");
                 sb.AppendLine("  \"v\": 1,");
                 sb.AppendLine($"  \"seen\": {_seen},");
                 sb.Append("  \"ranges\": [");
@@ -182,6 +186,7 @@ public static class TaskMarks
                     if (i > 0) sb.Append(',');
                     sb.Append('[').Append(_ranges[i].Start).Append(',').Append(_ranges[i].End).Append(']');
                 }
+
                 sb.AppendLine("]");
                 sb.AppendLine("}");
 
@@ -197,7 +202,12 @@ public static class TaskMarks
         }
     }
 
-        public static void Load()
+    public static void Init()
+    {
+        ExternalSaveManager.RegisterFile(JsonPath, Load);
+    }
+
+    public static void Load()
     {
         try
         {
@@ -253,6 +263,7 @@ public static class TaskMarks
                         continue;
                     }
                 }
+
                 _ranges.Add(r);
                 if (r.End > lastEnd) lastEnd = r.End;
             }
